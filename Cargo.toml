@@ -1,0 +1,13 @@
+[package]
+name = "lightwave-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["target_ target111@protonmail.com]
+description = "Command-line client for LightWave LED server"
+
+[dependencies]
+clap = { version = "4.5.31", features = ["derive"] }
+colored = "3.0.0"
+reqwest = { version = "0.12.12", features = ["blocking", "json"] }
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.139"
