@@ -16,7 +16,7 @@ A command-line client for controlling LightWave LED server.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/LightWave-Server.git
+git clone https://github.com/target111/lightwave-cli
 cd LightWave-Server/lightwave-cli
 
 # Build and install
