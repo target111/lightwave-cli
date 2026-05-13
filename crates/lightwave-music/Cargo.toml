@@ -1,0 +1,9 @@
+[package]
+name = "lightwave-music"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lightwave-core = { path = "../lightwave-core" }
+anyhow.workspace = true
+tokio.workspace = true

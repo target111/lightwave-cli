@@ -1,0 +1,21 @@
+[package]
+name = "lightwave"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "lightwave"
+path = "src/main.rs"
+
+[features]
+default = ["music"]
+music = ["dep:lightwave-music"]
+
+[dependencies]
+lightwave-core = { path = "../lightwave-core" }
+lightwave-music = { path = "../lightwave-music", optional = true }
+clap.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+owo-colors.workspace = true
+anstyle.workspace = true

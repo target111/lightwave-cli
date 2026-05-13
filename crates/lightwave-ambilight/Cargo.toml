@@ -1,0 +1,8 @@
+[package]
+name = "lightwave-ambilight"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lightwave-core = { path = "../lightwave-core" }
+anyhow.workspace = true
