@@ -1,8 +1,8 @@
-use lightwave_core::api;
-mod commands;
-
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use lightwave_core::api;
+
+mod commands;
 
 #[derive(Parser)]
 #[command(name = "lightwave", version, about = "CLI for LightWave-Server")]
@@ -14,7 +14,6 @@ struct Cli {
     /// Emit machine-readable JSON instead of pretty output
     #[arg(long, global = true)]
     json: bool,
-
 
     #[command(subcommand)]
     cmd: Cmd,
@@ -54,30 +53,38 @@ enum ColorCmd {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let base = cli.server
+    let Cli { server, json, cmd } = Cli::parse();
+
+    let base = server
         .or_else(|| std::env::var("LIGHTWAVE_URL").ok())
-        .unwrap_or_else(|| "http://localhost:8000".to_string());
-    let client = api::Client::new(base);
-    let json = cli.json;
+        .unwrap_or_else(|| "http://localhost:8080".to_string());
 
-    let result = match cli.cmd {
-        Cmd::Presets        => commands::presets::list(&client, json),
-        Cmd::Info { preset } => commands::presets::info(&client, &preset, json),
-        Cmd::Running        => commands::presets::running(&client, json),
-        Cmd::Start { preset, rest } => commands::start::run(&client, &preset, &rest, json),
-        Cmd::Stop           => commands::stop::run(&client, json),
-        Cmd::Color(ColorCmd::Set { color })        => commands::color::set(&client, &color, json),
-        Cmd::Color(ColorCmd::Brightness { level }) => commands::color::brightness(&client, level, json),
-        Cmd::Color(ColorCmd::Clear)                => commands::color::clear(&client, json),
-    };
+    let result = (|| -> Result<()> {
+        let client = api::Client::new(&base)
+            .with_context(|| format!("initializing LightWave client for {base}"))?;
 
-    if let Err(e) = &result
-        && json
-    {
-        let payload = serde_json::json!({ "ok": false, "error": e.to_string() });
-        println!("{}", serde_json::to_string(&payload)?);
-        std::process::exit(1);
+        match cmd {
+            Cmd::Presets => commands::presets::list(&client, json),
+            Cmd::Info { preset } => commands::presets::info(&client, &preset, json),
+            Cmd::Running => commands::presets::running(&client, json),
+            Cmd::Start { preset, rest } => commands::start::run(&client, &preset, &rest, json),
+            Cmd::Stop => commands::stop::run(&client, json),
+            Cmd::Color(ColorCmd::Set { color }) => commands::color::set(&client, &color, json),
+            Cmd::Color(ColorCmd::Brightness { level }) => {
+                commands::color::brightness(&client, level, json)
+            }
+            Cmd::Color(ColorCmd::Clear) => commands::color::clear(&client, json),
+        }
+    })();
+
+    if let Err(err) = result {
+        if json {
+            commands::print_error_json(format!("{err:#}"))?;
+            std::process::exit(1);
+        }
+
+        return Err(err);
     }
-    result
+
+    Ok(())
 }
