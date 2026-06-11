@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use anyhow::Result;
 use serde_json::{Value, json};
 
-pub mod color;
+pub mod leds;
 pub mod presets;
 pub mod start;
 pub mod stop;

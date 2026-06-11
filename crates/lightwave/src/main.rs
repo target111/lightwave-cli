@@ -37,7 +37,9 @@ enum Cmd {
     },
     /// Stop the running preset
     Stop,
-    /// Color & brightness controls
+    /// Global brightness control
+    Brightness { level: f32 },
+    /// Color controls
     #[command(subcommand)]
     Color(ColorCmd),
 }
@@ -46,8 +48,6 @@ enum Cmd {
 enum ColorCmd {
     /// Set a solid color (e.g. #FF0000 or red)
     Set { color: String },
-    /// Set brightness 0.0 - 1.0
-    Brightness { level: f32 },
     /// Clear (off)
     Clear,
 }
@@ -69,11 +69,9 @@ fn main() -> Result<()> {
             Cmd::Running => commands::presets::running(&client, json),
             Cmd::Start { preset, rest } => commands::start::run(&client, &preset, &rest, json),
             Cmd::Stop => commands::stop::run(&client, json),
-            Cmd::Color(ColorCmd::Set { color }) => commands::color::set(&client, &color, json),
-            Cmd::Color(ColorCmd::Brightness { level }) => {
-                commands::color::brightness(&client, level, json)
-            }
-            Cmd::Color(ColorCmd::Clear) => commands::color::clear(&client, json),
+            Cmd::Brightness { level } => commands::leds::brightness(&client, level, json),
+            Cmd::Color(ColorCmd::Set { color }) => commands::leds::set(&client, &color, json),
+            Cmd::Color(ColorCmd::Clear) => commands::leds::clear(&client, json),
         }
     })();
 

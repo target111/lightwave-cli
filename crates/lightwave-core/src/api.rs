@@ -218,8 +218,8 @@ impl Client {
         let body = serde_json::json!({ "brightness": brightness });
 
         self.post_json(
-            "/leds/color/brightness",
-            self.url(&["leds", "color", "brightness"])?,
+            "/leds/brightness",
+            self.url(&["leds", "brightness"])?,
             &body,
         )
     }
