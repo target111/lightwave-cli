@@ -1,0 +1,185 @@
+use anyhow::{Context, Result};
+use owo_colors::OwoColorize;
+use serde_json::json;
+
+use lightwave_core::Client;
+use lightwave_music::{Config, Streamer};
+
+#[derive(clap::Args)]
+pub struct MusicArgs {
+    /// Capture device (case-insensitive substring match) [default: system input]
+    #[arg(long)]
+    device: Option<String>,
+
+    /// PipeWire node id/name to capture (a sink id captures what's playing)
+    #[arg(long)]
+    target_node: Option<String>,
+
+    /// List capture devices and exit
+    #[arg(long)]
+    list_devices: bool,
+
+    /// FFT window size in samples (power of two)
+    #[arg(long, default_value_t = 2048)]
+    fft_size: usize,
+
+    /// Number of frequency bins sent per packet
+    #[arg(long, default_value_t = 32)]
+    bins: usize,
+
+    /// Linear gain applied to bin magnitudes
+    #[arg(long, default_value_t = 4.0)]
+    gain: f32,
+
+    /// Capture sample rate in Hz [default: device preference]
+    #[arg(long)]
+    sample_rate: Option<u32>,
+
+    /// Spectrum packets sent per second
+    #[arg(long, default_value_t = 60)]
+    fps: u32,
+
+    /// Lowest analyzed frequency in Hz
+    #[arg(long, default_value_t = 40.0)]
+    min_freq: f32,
+
+    /// Highest analyzed frequency in Hz
+    #[arg(long, default_value_t = 16000.0)]
+    max_freq: f32,
+
+    /// UDP port the visualizer preset listens on
+    #[arg(long, default_value_t = 5555)]
+    port: u16,
+
+    /// Name of the visualizer preset on the server
+    #[arg(long, default_value = "MusicVisualizer")]
+    preset: String,
+
+    /// Stream UDP only; don't start/stop the preset (assume it's running)
+    #[arg(long)]
+    no_start: bool,
+}
+
+pub fn run(client: &Client, args: &MusicArgs, json_mode: bool) -> Result<()> {
+    if args.list_devices {
+        return list_devices(json_mode);
+    }
+
+    let target = format!("{}:{}", client.host(), args.port);
+
+    let config = Config {
+        device: args.device.clone(),
+        target_node: args.target_node.clone(),
+        sample_rate: args.sample_rate,
+        fft_size: args.fft_size,
+        bins: args.bins,
+        gain: args.gain,
+        min_freq: args.min_freq,
+        max_freq: args.max_freq,
+        fps: args.fps,
+        target: target.clone(),
+    };
+
+    let streamer = Streamer::new(&config)?;
+
+    if !args.no_start {
+        client
+            .start(&args.preset, &json!({ "port": args.port }))
+            .with_context(|| format!("starting preset {}", args.preset))?;
+    }
+
+    if !json_mode {
+        println!(
+            "\n  {} {}  {}",
+            "♪".bright_magenta(),
+            streamer.device_name().bright_white().bold(),
+            format!("→ udp://{target}").dimmed()
+        );
+        println!(
+            "  {} {} Hz · fft {} · {} bins · gain {} · {} fps",
+            "›".dimmed(),
+            streamer.sample_rate(),
+            args.fft_size,
+            args.bins,
+            args.gain,
+            args.fps
+        );
+        println!(
+            "  {} streaming, press {} to stop\n",
+            "▶".bright_green(),
+            "Ctrl+C".bright_yellow().bold()
+        );
+    }
+
+    let result = streamer.run();
+
+    if !args.no_start {
+        if let Err(err) = client.stop() {
+            eprintln!("warning: failed to stop preset: {err:#}");
+        }
+    }
+
+    result?;
+
+    if json_mode {
+        crate::commands::print_ok_json(json!({
+            "action": "music",
+            "preset": args.preset,
+            "target": target,
+        }))?;
+    } else {
+        println!("  {} stopped", "■".bright_red());
+    }
+
+    Ok(())
+}
+
+fn list_devices(json_mode: bool) -> Result<()> {
+    let devices = lightwave_music::list_devices()?;
+
+    if json_mode {
+        let devices = devices
+            .iter()
+            .map(|d| {
+                json!({
+                    "name": &d.name,
+                    "default": d.is_default,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        return crate::commands::print_json(&json!({
+            "ok": true,
+            "devices": devices,
+        }));
+    }
+
+    if devices.is_empty() {
+        println!("  {} no capture devices found", "✗".red());
+        return Ok(());
+    }
+
+    println!(
+        "\n  {} {} capture device{}\n",
+        "●".green(),
+        devices.len().bold(),
+        if devices.len() == 1 { "" } else { "s" }
+    );
+
+    for device in &devices {
+        if device.is_default {
+            println!(
+                "  {}  {}  {}",
+                "▸".bright_magenta(),
+                device.name.bright_white().bold(),
+                "(default)".dimmed()
+            );
+        } else {
+            println!("  {}  {}", "▸".bright_magenta(), device.name);
+        }
+    }
+
+    println!();
+
+    Ok(())
+}

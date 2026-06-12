@@ -37,6 +37,9 @@ enum Cmd {
     },
     /// Stop the running preset
     Stop,
+    /// Capture audio and stream its spectrum to the music visualizer
+    #[cfg(feature = "music")]
+    Music(commands::music::MusicArgs),
     /// Global brightness control
     Brightness { level: f32 },
     /// Color controls
@@ -69,6 +72,8 @@ fn main() -> Result<()> {
             Cmd::Running => commands::presets::running(&client, json),
             Cmd::Start { preset, rest } => commands::start::run(&client, &preset, &rest, json),
             Cmd::Stop => commands::stop::run(&client, json),
+            #[cfg(feature = "music")]
+            Cmd::Music(args) => commands::music::run(&client, &args, json),
             Cmd::Brightness { level } => commands::leds::brightness(&client, level, json),
             Cmd::Color(ColorCmd::Set { color }) => commands::leds::set(&client, &color, json),
             Cmd::Color(ColorCmd::Clear) => commands::leds::clear(&client, json),

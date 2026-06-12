@@ -157,6 +157,11 @@ impl Client {
         Ok(())
     }
 
+    /// Host portion of the server URL, for protocols that bypass HTTP (e.g. UDP).
+    pub fn host(&self) -> &str {
+        self.base.host_str().unwrap_or("localhost")
+    }
+
     pub fn list_presets(&self) -> Result<PresetsListResponse> {
         self.get_json("/presets", self.url(&["presets"])?)
     }

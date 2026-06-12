@@ -7,3 +7,5 @@ edition.workspace = true
 lightwave-core = { path = "../lightwave-core" }
 anyhow.workspace = true
 tokio.workspace = true
+cpal.workspace = true
+realfft.workspace = true

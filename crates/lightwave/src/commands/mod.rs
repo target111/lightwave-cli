@@ -4,6 +4,8 @@ use anyhow::Result;
 use serde_json::{Value, json};
 
 pub mod leds;
+#[cfg(feature = "music")]
+pub mod music;
 pub mod presets;
 pub mod start;
 pub mod stop;
