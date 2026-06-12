@@ -23,6 +23,15 @@ pub struct AmbilightArgs {
     #[arg(long, default_value_t = 1.0)]
     vividness: f32,
 
+    /// Brightness gamma matching the strip to the screen (1 = raw values)
+    #[arg(long, default_value_t = 2.2)]
+    gamma: f32,
+
+    /// Lift box colors to at least this saturation; amplifies an existing
+    /// tint only, pure grey stays grey (0 = off)
+    #[arg(long, default_value_t = 0.0)]
+    min_saturation: f32,
+
     /// Send boxes in reverse order (strip runs against screen direction)
     #[arg(long)]
     reverse: bool,
@@ -56,6 +65,8 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
         edge: args.edge,
         depth: args.depth,
         vividness: args.vividness,
+        gamma: args.gamma,
+        min_saturation: args.min_saturation,
         reverse: args.reverse,
         fps: args.fps,
         reselect: args.reselect,
@@ -92,12 +103,13 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
             format!("→ udp://{target}").dimmed()
         );
         println!(
-            "  {} {} edge · {} boxes · depth {} · vividness {} · {} fps",
+            "  {} {} edge · {} boxes · depth {} · vividness {} · gamma {} · {} fps",
             "›".dimmed(),
             args.edge,
             args.boxes,
             args.depth,
             args.vividness,
+            args.gamma,
             args.fps
         );
         println!(

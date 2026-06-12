@@ -57,13 +57,23 @@ pub struct Sampler {
     edge: Edge,
     depth: f32,
     vividness: f32,
+    gamma: f32,
+    min_saturation: f32,
     reverse: bool,
     /// sRGB byte -> linear-light value.
     to_linear: [f32; 256],
 }
 
 impl Sampler {
-    pub fn new(boxes: usize, edge: Edge, depth: f32, vividness: f32, reverse: bool) -> Self {
+    pub fn new(
+        boxes: usize,
+        edge: Edge,
+        depth: f32,
+        vividness: f32,
+        gamma: f32,
+        min_saturation: f32,
+        reverse: bool,
+    ) -> Self {
         let mut to_linear = [0.0; 256];
         for (i, v) in to_linear.iter_mut().enumerate() {
             *v = srgb_to_linear(i as f32 / 255.0);
@@ -74,6 +84,8 @@ impl Sampler {
             edge,
             depth,
             vividness,
+            gamma,
+            min_saturation,
             reverse,
             to_linear,
         }
@@ -133,11 +145,11 @@ impl Sampler {
                 }
             }
 
-            out.push([
+            out.push(self.finish([
                 linear_to_srgb(sum[0] / weight_sum),
                 linear_to_srgb(sum[1] / weight_sum),
                 linear_to_srgb(sum[2] / weight_sum),
-            ]);
+            ]));
         }
 
         if self.reverse {
@@ -145,6 +157,39 @@ impl Sampler {
         }
 
         out
+    }
+
+    /// Final per-box adjustments, in sRGB space: lift saturation to the
+    /// configured floor, then gamma-correct brightness for the strip.
+    fn finish(&self, [r, g, b]: [f32; 3]) -> [f32; 3] {
+        let mut color = [r, g, b];
+        let v = r.max(g).max(b);
+        let chroma = v - r.min(g).min(b);
+
+        // Saturation floor: pull the lower channels away from grey while
+        // keeping the max channel and the channel ratios (the hue) fixed.
+        // It can only amplify a tint that's already there — pure grey has
+        // no hue to recover and is left alone.
+        if chroma > 0.0 && chroma < self.min_saturation * v {
+            let k = self.min_saturation * v / chroma;
+            for c in &mut color {
+                *c = v + (*c - v) * k;
+            }
+        }
+
+        // Gamma on brightness only: scaling every channel by v^(γ-1)
+        // darkens as much as per-channel gamma would, but keeps channel
+        // ratios — and so hue — intact (per-channel gamma turns orange
+        // into red). The strip's response to dark values is far brighter
+        // than the monitor's steep sRGB curve; this restores the match.
+        if v > 0.0 {
+            let scale = v.powf(self.gamma - 1.0);
+            for c in &mut color {
+                *c *= scale;
+            }
+        }
+
+        color
     }
 }
 
@@ -201,7 +246,7 @@ mod tests {
     #[test]
     fn solid_color_passes_through() {
         let data = rgbx(32, 32, |_, _| [200, 40, 90]);
-        let sampler = Sampler::new(4, Edge::Bottom, 0.25, 1.0, false);
+        let sampler = Sampler::new(4, Edge::Bottom, 0.25, 1.0, 1.0, 0.0, false);
 
         let boxes = sampler.sample(&frame(32, 32, &data));
 
@@ -218,7 +263,7 @@ mod tests {
         // Half black, half white: the linear mean is 0.5, which encodes
         // to ~0.735 sRGB. A gamma-space mean would give 0.5 instead.
         let data = rgbx(32, 32, |x, _| if x < 16 { [0; 3] } else { [255; 3] });
-        let sampler = Sampler::new(1, Edge::Bottom, 1.0, 0.0, false);
+        let sampler = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 1.0, 0.0, false);
 
         let boxes = sampler.sample(&frame(32, 32, &data));
 
@@ -230,8 +275,8 @@ mod tests {
     #[test]
     fn vivid_pixels_outweigh_grey() {
         let data = rgbx(32, 32, |x, _| if x < 16 { [128; 3] } else { [255, 0, 0] });
-        let plain = Sampler::new(1, Edge::Bottom, 1.0, 0.0, false);
-        let vivid = Sampler::new(1, Edge::Bottom, 1.0, 4.0, false);
+        let plain = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 1.0, 0.0, false);
+        let vivid = Sampler::new(1, Edge::Bottom, 1.0, 4.0, 1.0, 0.0, false);
 
         let plain_box = plain.sample(&frame(32, 32, &data))[0];
         let vivid_box = vivid.sample(&frame(32, 32, &data))[0];
@@ -247,8 +292,8 @@ mod tests {
     fn band_samples_the_requested_edge() {
         let data = rgbx(16, 16, |_, y| if y < 8 { [0, 0, 255] } else { [255, 0, 0] });
 
-        let bottom = Sampler::new(1, Edge::Bottom, 0.5, 0.0, false);
-        let top = Sampler::new(1, Edge::Top, 0.5, 0.0, false);
+        let bottom = Sampler::new(1, Edge::Bottom, 0.5, 0.0, 1.0, 0.0, false);
+        let top = Sampler::new(1, Edge::Top, 0.5, 0.0, 1.0, 0.0, false);
 
         let bottom_box = bottom.sample(&frame(16, 16, &data))[0];
         let top_box = top.sample(&frame(16, 16, &data))[0];
@@ -263,8 +308,8 @@ mod tests {
     fn boxes_follow_the_edge_and_reverse_flips_them() {
         let data = rgbx(16, 16, |x, _| if x < 8 { [0, 255, 0] } else { [255, 0, 0] });
 
-        let forward = Sampler::new(2, Edge::Bottom, 1.0, 0.0, false);
-        let reversed = Sampler::new(2, Edge::Bottom, 1.0, 0.0, true);
+        let forward = Sampler::new(2, Edge::Bottom, 1.0, 0.0, 1.0, 0.0, false);
+        let reversed = Sampler::new(2, Edge::Bottom, 1.0, 0.0, 1.0, 0.0, true);
 
         let f = forward.sample(&frame(16, 16, &data));
         let r = reversed.sample(&frame(16, 16, &data));
@@ -278,7 +323,7 @@ mod tests {
     #[test]
     fn vertical_edges_split_boxes_by_row() {
         let data = rgbx(16, 16, |_, y| if y < 8 { [0, 255, 0] } else { [255, 0, 0] });
-        let sampler = Sampler::new(2, Edge::Left, 1.0, 0.0, false);
+        let sampler = Sampler::new(2, Edge::Left, 1.0, 0.0, 1.0, 0.0, false);
 
         let boxes = sampler.sample(&frame(16, 16, &data));
 
@@ -287,9 +332,82 @@ mod tests {
     }
 
     #[test]
+    fn gamma_expands_darks_for_linear_leds() {
+        // Catppuccin-crust-like dark blue-grey: dim on screen, but sent
+        // raw to a linear-PWM strip it glows a bright pale white.
+        let data = rgbx(16, 16, |_, _| [35, 38, 52]);
+        let raw = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 1.0, 0.0, false);
+        let corrected = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 2.2, 0.0, false);
+
+        let raw_box = raw.sample(&frame(16, 16, &data))[0];
+        let corrected_box = corrected.sample(&frame(16, 16, &data))[0];
+
+        assert_close(raw_box[2], 52.0 / 255.0);
+        assert_close(corrected_box[2], (52.0f32 / 255.0).powf(2.2));
+        // The whole color should land far darker than the raw encoding.
+        for channel in 0..3 {
+            assert!(corrected_box[channel] < raw_box[channel] * 0.35);
+        }
+
+        // Full-brightness channels are unaffected by gamma.
+        let bright = rgbx(16, 16, |_, _| [255, 0, 0]);
+        let bright_box = corrected.sample(&frame(16, 16, &bright))[0];
+        assert_close(bright_box[0], 1.0);
+    }
+
+    #[test]
+    fn gamma_preserves_hue() {
+        // Orange must stay orange: per-channel gamma would crush the
+        // green channel relative to red and shift it toward pure red.
+        let data = rgbx(16, 16, |_, _| [255, 165, 0]);
+        let sampler = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 2.2, 0.0, false);
+
+        let color = sampler.sample(&frame(16, 16, &data))[0];
+
+        // Max channel at full brightness means gamma changes nothing.
+        assert_close(color[0], 1.0);
+        assert_close(color[1], 165.0 / 255.0);
+        assert_close(color[2], 0.0);
+    }
+
+    #[test]
+    fn saturation_floor_amplifies_existing_tint() {
+        // Crust-like dark blue-grey: saturation (v - min) / v ≈ 0.33.
+        let data = rgbx(16, 16, |_, _| [35, 38, 52]);
+        let sampler = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 1.0, 0.5, false);
+
+        let color = sampler.sample(&frame(16, 16, &data))[0];
+
+        let v: f32 = 52.0 / 255.0;
+        // Max channel is untouched; the others are pulled away from grey
+        // until saturation reaches the floor.
+        assert_close(color[2], v);
+        let saturation = (v - color[0].min(color[1])) / v;
+        assert_close(saturation, 0.5);
+    }
+
+    #[test]
+    fn saturation_floor_leaves_grey_and_vivid_colors_alone() {
+        let sampler = Sampler::new(1, Edge::Bottom, 1.0, 0.0, 1.0, 0.5, false);
+
+        // Pure grey has no hue to amplify.
+        let grey = rgbx(16, 16, |_, _| [128, 128, 128]);
+        let grey_box = sampler.sample(&frame(16, 16, &grey))[0];
+        for channel in grey_box {
+            assert_close(channel, 128.0 / 255.0);
+        }
+
+        // Already above the floor: untouched.
+        let red = rgbx(16, 16, |_, _| [255, 0, 0]);
+        let red_box = sampler.sample(&frame(16, 16, &red))[0];
+        assert_close(red_box[0], 1.0);
+        assert_close(red_box[1], 0.0);
+    }
+
+    #[test]
     fn malformed_frame_yields_nothing() {
         let data = rgbx(8, 4, |_, _| [255; 3]);
-        let sampler = Sampler::new(2, Edge::Bottom, 0.5, 1.0, false);
+        let sampler = Sampler::new(2, Edge::Bottom, 0.5, 1.0, 1.0, 0.0, false);
 
         // Claim a bigger frame than the buffer holds.
         let boxes = sampler.sample(&frame(8, 8, &data));

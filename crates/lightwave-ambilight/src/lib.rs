@@ -33,6 +33,13 @@ pub struct Config {
     pub depth: f32,
     /// How strongly vivid pixels outweigh dull ones (0 = plain mean).
     pub vividness: f32,
+    /// Brightness gamma applied to outgoing colors (hue-preserving).
+    /// The strip renders dark values far brighter than the monitor's
+    /// steep sRGB curve; without this (~2.2) dark scenes glow.
+    pub gamma: f32,
+    /// Lift box colors to at least this saturation (0 = off). Amplifies
+    /// an existing tint only; pure grey stays grey.
+    pub min_saturation: f32,
     /// Send boxes in reverse order (strip runs against screen direction).
     pub reverse: bool,
     /// UDP packets per second; also caps the negotiated capture rate.
@@ -55,6 +62,17 @@ impl Config {
 
         if self.vividness < 0.0 {
             bail!("vividness must be >= 0, got {}", self.vividness);
+        }
+
+        if self.gamma <= 0.0 {
+            bail!("gamma must be positive, got {}", self.gamma);
+        }
+
+        if !(0.0..=1.0).contains(&self.min_saturation) {
+            bail!(
+                "min-saturation must be in 0..=1, got {}",
+                self.min_saturation
+            );
         }
 
         if self.fps == 0 {
@@ -88,6 +106,8 @@ impl Streamer {
             config.edge,
             config.depth,
             config.vividness,
+            config.gamma,
+            config.min_saturation,
             config.reverse,
         );
 
