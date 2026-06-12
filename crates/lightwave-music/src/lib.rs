@@ -157,10 +157,10 @@ impl Streamer {
             self.packet.extend_from_slice(&bin.to_le_bytes());
         }
 
-        if let Err(err) = self.socket.send(&self.packet) {
-            if err.kind() != io::ErrorKind::ConnectionRefused {
-                return Err(err).context("sending UDP packet");
-            }
+        if let Err(err) = self.socket.send(&self.packet)
+            && err.kind() != io::ErrorKind::ConnectionRefused
+        {
+            return Err(err).context("sending UDP packet");
         }
 
         Ok(())

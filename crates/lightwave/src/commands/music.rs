@@ -88,7 +88,20 @@ pub fn run(client: &Client, args: &MusicArgs, json_mode: bool) -> Result<()> {
             .with_context(|| format!("starting preset {}", args.preset))?;
     }
 
-    if !json_mode {
+    if json_mode {
+        // First line on stdout confirms packets are flowing; consumers can
+        // block on it to know the stream came up.
+        crate::commands::print_json(&json!({
+            "event": "start",
+            "preset": args.preset,
+            "device": streamer.device_name(),
+            "sample_rate": streamer.sample_rate(),
+            "target": target,
+            "fft_size": args.fft_size,
+            "bins": args.bins,
+            "fps": args.fps,
+        }))?;
+    } else {
         println!(
             "\n  {} {}  {}",
             "♪".bright_magenta(),
@@ -113,19 +126,19 @@ pub fn run(client: &Client, args: &MusicArgs, json_mode: bool) -> Result<()> {
 
     let result = streamer.run();
 
-    if !args.no_start {
-        if let Err(err) = client.stop() {
-            eprintln!("warning: failed to stop preset: {err:#}");
-        }
+    if !args.no_start
+        && let Err(err) = client.stop()
+    {
+        eprintln!("warning: failed to stop preset: {err:#}");
     }
 
     result?;
 
     if json_mode {
-        crate::commands::print_ok_json(json!({
-            "action": "music",
-            "preset": args.preset,
-            "target": target,
+        // Errors skip this: they surface as the final {"ok":false,...} line.
+        crate::commands::print_json(&json!({
+            "event": "stop",
+            "reason": "interrupt",
         }))?;
     } else {
         println!("  {} stopped", "■".bright_red());

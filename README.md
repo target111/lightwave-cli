@@ -25,6 +25,21 @@ lightwave music --list-devices       # show capture devices
 lightwave music --device pipewire    # pick a device by substring
 ```
 
+### Scripting (`--json`)
+
+With `--json`, `lightwave music` emits newline-delimited JSON events on
+stdout, so supervisors (status bars, plugins) can track the stream without
+polling: a `start` event once audio is flowing, a `stop` event on clean
+shutdown, or a final `{"ok": false, ...}` object on error.
+
+```json
+{"event":"start","preset":"MusicVisualizer","device":"pipewire","sample_rate":44100,"target":"192.168.10.2:5555","fft_size":2048,"bins":32,"fps":60}
+{"event":"stop","reason":"interrupt"}
+```
+
+Whether the visualizer preset is active server-side (regardless of who
+started it) is a separate question: ask `lightwave running --json`.
+
 ### Capturing what's playing (Linux/PipeWire)
 
 By default the capture stream links to your *input* device (microphone or
@@ -33,9 +48,15 @@ monitor instead: find the sink id with `wpctl status` and pass it as
 `--target-node`:
 
 ```sh
-wpctl status                  # Sinks: * 57. Ryzen HD Audio Controller ...
-lightwave music --target-node 57
+wpctl status                  # Sinks: * 51. Ryzen HD Audio Controller ...
+lightwave music --target-node 51
 ```
+
+`--target-node` also accepts a node *name* (stable across reboots, unlike
+ids) — but only for capture-class nodes such as microphones
+(`alsa_input...`). WirePlumber resolves names against capture-suitable
+nodes only, so a sink's monitor must be targeted by numeric id; look it up
+fresh from `wpctl status` each time.
 
 `--target-node` accepts a PipeWire node id or name and works through the
 PipeWire ALSA plugin (`pipewire-alsa` must be installed; the flag sets
