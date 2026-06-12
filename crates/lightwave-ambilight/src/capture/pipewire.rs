@@ -70,7 +70,7 @@ impl Capture {
         Ok(Self {
             quit: quit_tx,
             thread: Some(thread),
-            size: size.tuple(),
+            size,
         })
     }
 
@@ -180,26 +180,16 @@ fn save_restore_token(token: &str) {
 struct StreamState<F> {
     on_frame: F,
     info: Option<spa::param::video::VideoInfoRaw>,
-    /// Fires once, when the first format negotiation completes.
-    ready: Option<mpsc::Sender<Result<Size>>>,
-}
-
-struct Size {
-    width: u32,
-    height: u32,
-}
-
-impl Size {
-    fn tuple(&self) -> (u32, u32) {
-        (self.width, self.height)
-    }
+    /// Fires once, when the first format negotiation completes,
+    /// delivering the negotiated (width, height).
+    ready: Option<mpsc::Sender<Result<(u32, u32)>>>,
 }
 
 fn run_capture_loop<F>(
     portal: PortalStream,
     max_fps: u32,
     on_frame: F,
-    ready: mpsc::Sender<Result<Size>>,
+    ready: mpsc::Sender<Result<(u32, u32)>>,
     quit: pw::channel::Receiver<()>,
 ) -> Result<()>
 where
@@ -260,10 +250,7 @@ where
             }
 
             if let Some(ready) = state.ready.take() {
-                let _ = ready.send(Ok(Size {
-                    width: info.size().width,
-                    height: info.size().height,
-                }));
+                let _ = ready.send(Ok((info.size().width, info.size().height)));
             }
             state.info = Some(info);
         })

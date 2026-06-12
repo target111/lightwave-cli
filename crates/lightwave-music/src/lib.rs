@@ -1,11 +1,10 @@
 mod capture;
 mod dsp;
 
-use std::io;
-use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
+use std::net::UdpSocket;
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use tokio::time::MissedTickBehavior;
 
 pub use capture::{DeviceInfo, list_devices};
@@ -93,17 +92,7 @@ impl Streamer {
             config.gain,
         )?;
 
-        let target = resolve_target(&config.target)?;
-        let bind_addr: SocketAddr = if target.is_ipv4() {
-            ([0, 0, 0, 0], 0).into()
-        } else {
-            (std::net::Ipv6Addr::UNSPECIFIED, 0).into()
-        };
-
-        let socket = UdpSocket::bind(bind_addr).context("binding UDP socket")?;
-        socket
-            .connect(target)
-            .with_context(|| format!("connecting UDP socket to {target}"))?;
+        let socket = lightwave_core::net::connect_udp(&config.target)?;
 
         Ok(Self {
             capture,
@@ -157,27 +146,6 @@ impl Streamer {
             self.packet.extend_from_slice(&bin.to_le_bytes());
         }
 
-        if let Err(err) = self.socket.send(&self.packet)
-            && err.kind() != io::ErrorKind::ConnectionRefused
-        {
-            return Err(err).context("sending UDP packet");
-        }
-
-        Ok(())
+        lightwave_core::net::send_packet(&self.socket, &self.packet)
     }
-}
-
-/// prefer IPv4 addresses.
-fn resolve_target(target: &str) -> Result<SocketAddr> {
-    let addrs: Vec<SocketAddr> = target
-        .to_socket_addrs()
-        .with_context(|| format!("resolving UDP target {target:?}"))?
-        .collect();
-
-    addrs
-        .iter()
-        .find(|addr| addr.is_ipv4())
-        .or_else(|| addrs.first())
-        .copied()
-        .ok_or_else(|| anyhow!("UDP target {target:?} resolved to no addresses"))
 }
