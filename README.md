@@ -1,7 +1,8 @@
 # lightwave-cli
 
 CLI for LightWave-Server: manage presets, colors, and brightness, and feed
-the music visualizer preset with live audio.
+the music visualizer and ambilight presets with live audio and screen
+colors.
 
 ```sh
 cargo install --path crates/lightwave
@@ -69,3 +70,33 @@ node sidesteps default-source selection entirely.
 On Windows, WASAPI loopback devices appear in `--list-devices`, so system
 audio can be captured by picking an output device with `--device`. On
 macOS, loopback needs a virtual device such as BlackHole.
+
+## Ambilight (Linux only)
+
+`lightwave ambilight` captures the screen via xdg-desktop-portal +
+PipeWire, averages an edge band into N box colors, and streams them over
+UDP to the `Ambilight` preset, which it starts and stops for you. The
+first run shows the portal's screen picker; the permission is saved after
+that (`--reselect` shows it again).
+
+```sh
+lightwave ambilight                    # bottom edge, 16 boxes, 30 fps
+lightwave ambilight --edge left --reverse
+lightwave ambilight --boxes 32 --depth 0.3
+```
+
+Color tuning (see `--help` for everything):
+
+- `--depth` — how far the sampled band reaches in from the edge.
+- `--vividness` — how strongly colorful pixels outweigh grey ones in the
+  average (0 = plain mean).
+- `--gamma` — brightness gamma matching the strip to the screen (default
+  2.2; the strip's PWM is linear, so raw sRGB values make dark scenes
+  glow). Hue-preserving: it dims, it never shifts colors.
+- `--min-saturation` — render near-grey content as a clear dim color by
+  amplifying its existing tint (0 = off; ~0.3 is plenty).
+
+`--json` emits the same newline-delimited events as `music`. Building the
+`ambilight` feature (on by default) needs the PipeWire headers and
+libclang; on non-Linux targets build with `--no-default-features
+--features music`.
