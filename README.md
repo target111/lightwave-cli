@@ -4,7 +4,7 @@ CLI for LightWave-Server: manage presets, colors, and brightness, and feed
 the music visualizer preset with live audio.
 
 ```sh
-cargo build --release
+cargo install --path crates/lightwave
 lightwave presets                 # list presets on the server
 lightwave start <preset> --help   # show a preset's args
 ```
