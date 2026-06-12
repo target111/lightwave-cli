@@ -3,6 +3,8 @@ use std::io::{self, Write};
 use anyhow::Result;
 use serde_json::{Value, json};
 
+#[cfg(feature = "ambilight")]
+pub mod ambilight;
 pub mod leds;
 #[cfg(feature = "music")]
 pub mod music;

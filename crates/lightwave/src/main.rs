@@ -40,6 +40,9 @@ enum Cmd {
     /// Capture audio and stream its spectrum to the music visualizer
     #[cfg(feature = "music")]
     Music(commands::music::MusicArgs),
+    /// Capture the screen and stream edge colors to the ambilight preset
+    #[cfg(feature = "ambilight")]
+    Ambilight(commands::ambilight::AmbilightArgs),
     /// Global brightness control
     Brightness { level: f32 },
     /// Color controls
@@ -74,6 +77,8 @@ fn main() -> Result<()> {
             Cmd::Stop => commands::stop::run(&client, json),
             #[cfg(feature = "music")]
             Cmd::Music(args) => commands::music::run(&client, &args, json),
+            #[cfg(feature = "ambilight")]
+            Cmd::Ambilight(args) => commands::ambilight::run(&client, &args, json),
             Cmd::Brightness { level } => commands::leds::brightness(&client, level, json),
             Cmd::Color(ColorCmd::Set { color }) => commands::leds::set(&client, &color, json),
             Cmd::Color(ColorCmd::Clear) => commands::leds::clear(&client, json),

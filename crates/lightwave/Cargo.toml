@@ -8,12 +8,15 @@ name = "lightwave"
 path = "src/main.rs"
 
 [features]
-default = ["music"]
+default = ["music", "ambilight"]
 music = ["dep:lightwave-music"]
+# Linux-only: lightwave-ambilight fails to compile elsewhere.
+ambilight = ["dep:lightwave-ambilight"]
 
 [dependencies]
 lightwave-core = { path = "../lightwave-core" }
 lightwave-music = { path = "../lightwave-music", optional = true }
+lightwave-ambilight = { path = "../lightwave-ambilight", optional = true }
 clap.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true

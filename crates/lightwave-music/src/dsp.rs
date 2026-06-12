@@ -84,7 +84,9 @@ fn bin_ranges(
     let max_freq = max_freq.min(nyquist);
 
     if min_freq >= max_freq {
-        bail!("min-freq {min_freq} Hz must be below max-freq {max_freq} Hz (Nyquist is {nyquist} Hz)");
+        bail!(
+            "min-freq {min_freq} Hz must be below max-freq {max_freq} Hz (Nyquist is {nyquist} Hz)"
+        );
     }
 
     let spectrum_len = fft_size / 2 + 1;

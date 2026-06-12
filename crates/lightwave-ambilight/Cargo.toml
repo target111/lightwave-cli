@@ -4,5 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-lightwave-core = { path = "../lightwave-core" }
 anyhow.workspace = true
+tokio.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd.workspace = true
+pipewire.workspace = true

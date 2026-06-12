@@ -14,6 +14,8 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 clap = { version = "4.5", features = ["derive"] }
 cpal = "0.16"
 realfft = "3"
+ashpd = { version = "0.13", features = ["screencast"] }
+pipewire = "0.10"
 owo-colors = "4"
 anstyle = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
