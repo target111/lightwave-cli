@@ -54,7 +54,7 @@ On Windows, WASAPI loopback devices appear in `--list-devices`, so system
 audio can be captured by picking an output device with `--device`. On
 macOS, loopback needs a virtual device such as BlackHole.
 
-## Ambilight (Linux only)
+## Ambilight (Linux only; windows support comming soon :)
 
 `lightwave ambilight` captures the screen via xdg-desktop-portal +
 PipeWire, averages an edge band into N box colors, and streams them over
