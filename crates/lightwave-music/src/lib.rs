@@ -11,10 +11,8 @@ pub use capture::{DeviceInfo, list_devices};
 
 pub struct Config {
     /// Case-insensitive substring match on device names; None = default input.
+    /// On PipeWire an output sink matches here, capturing its monitor.
     pub device: Option<String>,
-    /// PipeWire node id or name to capture from (Linux/PipeWire only);
-    /// a sink node captures its monitor, i.e. whatever is playing.
-    pub target_node: Option<String>,
     /// Capture sample rate in Hz; None = device preference.
     pub sample_rate: Option<u32>,
     /// FFT window size in samples (power of two).
@@ -78,7 +76,6 @@ impl Streamer {
 
         let capture = capture::Capture::open(
             config.device.as_deref(),
-            config.target_node.as_deref(),
             config.sample_rate,
             config.fft_size,
         )?;

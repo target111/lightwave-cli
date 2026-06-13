@@ -21,9 +21,9 @@ you. See `lightwave music --help` for tuning options (`--fft-size`,
 `--bins`, `--gain`, `--sample-rate`, `--fps`, `--min-freq`/`--max-freq`).
 
 ```sh
-lightwave music                      # capture the default input device
+lightwave music                      # capture whatever is playing
 lightwave music --list-devices       # show capture devices
-lightwave music --device pipewire    # pick a device by substring
+lightwave music --device alc897      # pick a device by substring
 ```
 
 ### Scripting (`--json`)
@@ -34,38 +34,21 @@ polling: a `start` event once audio is flowing, a `stop` event on clean
 shutdown, or a final `{"ok": false, ...}` object on error.
 
 ```json
-{"event":"start","preset":"MusicVisualizer","device":"pipewire","sample_rate":44100,"target":"192.168.10.2:5555","fft_size":2048,"bins":32,"fps":60}
+{"event":"start","preset":"MusicVisualizer","device":"output_default","sample_rate":48000,"target":"192.168.10.2:5555","fft_size":2048,"bins":32,"fps":60}
 {"event":"stop","reason":"interrupt"}
 ```
 
 Whether the visualizer preset is active server-side (regardless of who
 started it) is a separate question: ask `lightwave running --json`.
 
-### Capturing what's playing (Linux/PipeWire)
+### Choosing what to capture
 
-By default the capture stream links to your *input* device (microphone or
-line-in). To visualize the music you're playing, capture the output sink's
-monitor instead: find the sink id with `wpctl status` and pass it as
-`--target-node`:
-
-```sh
-wpctl status                  # Sinks: * 51. Ryzen HD Audio Controller ...
-lightwave music --target-node 51
-```
-
-`--target-node` also accepts a node *name* (stable across reboots, unlike
-ids) — but only for capture-class nodes such as microphones
-(`alsa_input...`). WirePlumber resolves names against capture-suitable
-nodes only, so a sink's monitor must be targeted by numeric id; look it up
-fresh from `wpctl status` each time.
-
-`--target-node` accepts a PipeWire node id or name and works through the
-PipeWire ALSA plugin (`pipewire-alsa` must be installed; the flag sets
-`PIPEWIRE_NODE` under the hood). It is also the fix when capture fails with
-`snd_pcm_hw_params ... No such file or directory` — that is PipeWire
-reporting "no target node available" because no default source is
-configured (`wpctl inspect @DEFAULT_AUDIO_SOURCE@` returns -1); pinning the
-node sidesteps default-source selection entirely.
+On Linux, cpal uses PipeWire natively (falling back to ALSA when PipeWire
+isn't running). By default `lightwave music` captures the default output
+sink's monitor, so it visualizes whatever is playing. To capture something
+specific, pass `--device <substring>`: an output sink picks up its monitor,
+an input device (microphone, line-in) is captured directly. Run
+`--list-devices` to see the names.
 
 On Windows, WASAPI loopback devices appear in `--list-devices`, so system
 audio can be captured by picking an output device with `--device`. On
@@ -96,7 +79,8 @@ Color tuning (see `--help` for everything):
 - `--min-saturation` — render near-grey content as a clear dim color by
   amplifying its existing tint (0 = off; ~0.3 is plenty).
 
-`--json` emits the same newline-delimited events as `music`. Building the
-`ambilight` feature (on by default) needs the PipeWire headers and
-libclang; on non-Linux targets build with `--no-default-features
+`--json` emits the same newline-delimited events as `music`. On Linux both
+the `music` and `ambilight` features (on by default) need the PipeWire
+headers and libclang; on non-Linux targets the PipeWire dependency drops
+out, but `ambilight` is Linux-only, so build with `--no-default-features
 --features music`.

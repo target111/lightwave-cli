@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, Host, Sample, SampleFormat, SampleRate, SupportedStreamConfig};
+use cpal::{Device, Host, HostId, Sample, SampleFormat, StreamConfig};
 
 pub struct DeviceInfo {
     pub name: String,
@@ -11,20 +11,19 @@ pub struct DeviceInfo {
 
 pub fn list_devices() -> Result<Vec<DeviceInfo>> {
     let host = cpal::default_host();
-    let default_name = host.default_input_device().and_then(|d| d.name().ok());
+    let default_name = host.default_input_device().map(|d| device_name(&d));
 
-    let mut devices = Vec::new();
-
-    for device in host.devices().context("enumerating audio devices")? {
-        if !can_capture(&device) {
-            continue;
-        }
-
-        let name = device.name().unwrap_or_else(|_| "<unknown>".to_string());
-        let is_default = Some(&name) == default_name.as_ref();
-
-        devices.push(DeviceInfo { name, is_default });
-    }
+    // Under the PipeWire backend, output sinks are exposed as input-capable
+    // devices, so picking one here captures its monitor (whatever is playing).
+    let devices = host
+        .input_devices()
+        .context("enumerating audio devices")?
+        .map(|device| {
+            let name = device_name(&device);
+            let is_default = Some(&name) == default_name.as_ref();
+            DeviceInfo { name, is_default }
+        })
+        .collect();
 
     Ok(devices)
 }
@@ -40,44 +39,30 @@ pub struct Capture {
 }
 
 impl Capture {
-    pub fn open(
-        filter: Option<&str>,
-        target_node: Option<&str>,
-        sample_rate: Option<u32>,
-        fft_size: usize,
-    ) -> Result<Self> {
-        if let Some(node) = target_node {
-            // The PipeWire ALSA plugin links its stream to this node instead
-            // of the default source; pointing it at a sink captures the
-            // sink's monitor. Ignored by every other backend.
-            unsafe { std::env::set_var("PIPEWIRE_NODE", node) };
-        }
-
+    pub fn open(filter: Option<&str>, sample_rate: Option<u32>, fft_size: usize) -> Result<Self> {
         let host = cpal::default_host();
 
         let device = match filter {
             Some(filter) => find_device(&host, filter)?,
-            None => host
-                .default_input_device()
-                .ok_or_else(|| anyhow!("no default capture device; try --list-devices"))?,
+            None => default_device(&host)?,
         };
 
-        let name = device.name().unwrap_or_else(|_| "<unknown>".to_string());
-        let supported = pick_config(&device, sample_rate)?;
+        let name = device_name(&device);
+        let (config, format) = pick_config(&device, sample_rate)?;
 
         let ring = Arc::new(Mutex::new(Ring {
             samples: vec![0.0; fft_size],
             pos: 0,
         }));
 
-        let stream = build_stream(&device, &supported, Arc::clone(&ring))?;
+        let stream = build_stream(&device, &config, format, Arc::clone(&ring))?;
         stream.play().context("starting audio capture stream")?;
 
         Ok(Self {
             _stream: stream,
             ring,
             name,
-            sample_rate: supported.sample_rate().0,
+            sample_rate: config.sample_rate,
         })
     }
 
@@ -110,47 +95,70 @@ impl Ring {
     }
 }
 
-fn can_capture(device: &Device) -> bool {
+fn device_name(device: &Device) -> String {
     device
-        .supported_input_configs()
-        .is_ok_and(|mut configs| configs.next().is_some())
+        .description()
+        .map(|desc| desc.name().to_string())
+        .unwrap_or_else(|_| "<unknown>".to_string())
+}
+
+/// The default capture target. On PipeWire that's the default output sink,
+/// whose monitor cpal captures when opened as input — so the visualizer
+/// follows whatever is playing out of the box. Other backends have no such
+/// loopback, so they fall back to the default input (microphone/line-in).
+fn default_device(host: &Host) -> Result<Device> {
+    if host.id() == HostId::PipeWire
+        && let Some(sink) = host.default_output_device()
+    {
+        return Ok(sink);
+    }
+
+    host.default_input_device()
+        .ok_or_else(|| anyhow!("no default capture device; try --list-devices"))
 }
 
 fn find_device(host: &Host, filter: &str) -> Result<Device> {
     let needle = filter.to_lowercase();
 
-    host.devices()
+    host.input_devices()
         .context("enumerating audio devices")?
-        .find(|device| {
-            device
-                .name()
-                .is_ok_and(|name| name.to_lowercase().contains(&needle))
-                && can_capture(device)
-        })
+        .find(|device| device_name(device).to_lowercase().contains(&needle))
         .ok_or_else(|| anyhow!("no capture device matching {filter:?}; try --list-devices"))
 }
 
-fn pick_config(device: &Device, sample_rate: Option<u32>) -> Result<SupportedStreamConfig> {
-    let Some(rate) = sample_rate else {
-        return device
-            .default_input_config()
-            .context("querying default input config");
-    };
+/// Resolves the stream config, keeping the device's preferred sample format
+/// (so PipeWire hands us float frames) while honoring a sample-rate override.
+/// A sink captured as input reports its config under the output direction,
+/// so fall back to that when the device exposes no input config of its own.
+fn pick_config(device: &Device, sample_rate: Option<u32>) -> Result<(StreamConfig, SampleFormat)> {
+    let default = device
+        .default_input_config()
+        .or_else(|_| device.default_output_config())
+        .context("querying default device config")?;
 
-    device
-        .supported_input_configs()
-        .context("querying supported input configs")?
-        .find(|range| range.min_sample_rate().0 <= rate && rate <= range.max_sample_rate().0)
-        .map(|range| range.with_sample_rate(SampleRate(rate)))
-        .ok_or_else(|| anyhow!("device does not support a sample rate of {rate} Hz"))
+    let format = default.sample_format();
+    let mut config = default.config();
+
+    if let Some(rate) = sample_rate {
+        let input = device.supported_input_configs().into_iter().flatten();
+        let output = device.supported_output_configs().into_iter().flatten();
+
+        if !input.chain(output).any(|range| range.contains_rate(rate)) {
+            bail!("device does not support a sample rate of {rate} Hz");
+        }
+
+        config.sample_rate = rate;
+    }
+
+    Ok((config, format))
 }
 
 fn build_stream(
     device: &Device,
-    supported: &SupportedStreamConfig,
+    config: &StreamConfig,
+    format: SampleFormat,
     ring: Arc<Mutex<Ring>>,
 ) -> Result<cpal::Stream> {
-    let config = supported.config();
     let channels = config.channels as usize;
     let err_fn = |err| eprintln!("audio stream error: {err}");
 
@@ -158,7 +166,7 @@ fn build_stream(
     macro_rules! stream_as {
         ($sample:ty) => {
             device.build_input_stream(
-                &config,
+                *config,
                 move |data: &[$sample], _: &cpal::InputCallbackInfo| {
                     let mut ring = ring.lock().unwrap();
                     for frame in data.chunks_exact(channels) {
@@ -172,13 +180,17 @@ fn build_stream(
         };
     }
 
-    let stream = match supported.sample_format() {
+    let stream = match format {
         SampleFormat::F32 => stream_as!(f32),
         SampleFormat::F64 => stream_as!(f64),
+        SampleFormat::I8 => stream_as!(i8),
         SampleFormat::I16 => stream_as!(i16),
+        SampleFormat::I24 => stream_as!(cpal::I24),
         SampleFormat::I32 => stream_as!(i32),
-        SampleFormat::U16 => stream_as!(u16),
         SampleFormat::U8 => stream_as!(u8),
+        SampleFormat::U16 => stream_as!(u16),
+        SampleFormat::U24 => stream_as!(cpal::U24),
+        SampleFormat::U32 => stream_as!(u32),
         other => bail!("unsupported sample format {other:?}"),
     };
 

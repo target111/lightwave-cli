@@ -7,13 +7,10 @@ use lightwave_music::{Config, Streamer};
 
 #[derive(clap::Args)]
 pub struct MusicArgs {
-    /// Capture device (case-insensitive substring match) [default: system input]
+    /// Capture device (case-insensitive substring match); on PipeWire, name an
+    /// output sink to capture what's playing [default: system input]
     #[arg(long)]
     device: Option<String>,
-
-    /// PipeWire node id/name to capture (a sink id captures what's playing)
-    #[arg(long)]
-    target_node: Option<String>,
 
     /// List capture devices and exit
     #[arg(long)]
@@ -69,7 +66,6 @@ pub fn run(client: &Client, args: &MusicArgs, json_mode: bool) -> Result<()> {
 
     let config = Config {
         device: args.device.clone(),
-        target_node: args.target_node.clone(),
         sample_rate: args.sample_rate,
         fft_size: args.fft_size,
         bins: args.bins,

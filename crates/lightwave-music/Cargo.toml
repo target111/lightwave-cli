@@ -7,5 +7,8 @@ edition.workspace = true
 lightwave-core = { path = "../lightwave-core" }
 anyhow.workspace = true
 tokio.workspace = true
-cpal.workspace = true
+# The native PipeWire backend captures a sink's monitor directly (no
+# pipewire-alsa plugin, no default-source requirement); cpal prefers it over
+# ALSA when PipeWire is running and falls back to ALSA otherwise.
+cpal = { workspace = true, features = ["pipewire"] }
 realfft.workspace = true
