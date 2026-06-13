@@ -33,11 +33,7 @@ impl Capture {
         let host = cpal::default_host();
 
         let (device, name) = match filter {
-            Some(filter) => {
-                let device = find_device(&host, filter)?;
-                let name = device_name(&device);
-                (device, name)
-            }
+            Some(filter) => find_device(&host, filter)?,
             None => default_device(&host)?,
         };
 
@@ -115,12 +111,16 @@ fn default_device(host: &Host) -> Result<(Device, String)> {
     Ok((device, "default input".to_string()))
 }
 
-fn find_device(host: &Host, filter: &str) -> Result<Device> {
+fn find_device(host: &Host, filter: &str) -> Result<(Device, String)> {
     let needle = filter.to_lowercase();
 
     host.input_devices()
         .context("enumerating audio devices")?
         .find(|device| device_name(device).to_lowercase().contains(&needle))
+        .map(|device| {
+            let name = device_name(&device);
+            (device, name)
+        })
         .ok_or_else(|| anyhow!("no capture device matching {filter:?}; try --list-devices"))
 }
 

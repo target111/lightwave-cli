@@ -83,8 +83,9 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
     }
 
     if json_mode {
-        // First line on stdout confirms packets are flowing; consumers can
-        // block on it to know the stream came up.
+        // First line on stdout confirms the capture and socket are up and the
+        // preset was started; streaming begins right after. Consumers can block
+        // on it to know initialization succeeded.
         crate::commands::print_json(&json!({
             "event": "start",
             "preset": args.preset,

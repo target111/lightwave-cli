@@ -18,6 +18,7 @@ pub fn print_json(value: &Value) -> Result<()> {
 
     serde_json::to_writer(&mut stdout, value)?;
     writeln!(stdout)?;
+    stdout.flush()?;
 
     Ok(())
 }

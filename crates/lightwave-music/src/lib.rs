@@ -43,16 +43,37 @@ impl Config {
             bail!("bins must be at least 1");
         }
 
-        if self.gain <= 0.0 {
-            bail!("gain must be positive, got {}", self.gain);
+        // Past fft_size/2 usable bins, trailing ranges collapse to empty
+        let usable = self.fft_size / 2;
+        if self.bins > usable {
+            bail!(
+                "bins {} exceeds the {usable} FFT bins available at fft-size {}; \
+                 reduce bins or raise fft-size",
+                self.bins,
+                self.fft_size
+            );
+        }
+
+        if !self.gain.is_finite() || self.gain <= 0.0 {
+            bail!("gain must be a finite positive number, got {}", self.gain);
         }
 
         if self.fps == 0 {
             bail!("fps must be at least 1");
         }
 
-        if self.min_freq <= 0.0 {
-            bail!("min-freq must be positive, got {}", self.min_freq);
+        if !self.min_freq.is_finite() || self.min_freq <= 0.0 {
+            bail!(
+                "min-freq must be a finite positive number, got {}",
+                self.min_freq
+            );
+        }
+
+        if !self.max_freq.is_finite() || self.max_freq <= 0.0 {
+            bail!(
+                "max-freq must be a finite positive number, got {}",
+                self.max_freq
+            );
         }
 
         Ok(())

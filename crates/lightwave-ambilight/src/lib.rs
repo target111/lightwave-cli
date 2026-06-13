@@ -59,12 +59,15 @@ impl Config {
             bail!("depth must be in (0, 1], got {}", self.depth);
         }
 
-        if self.vividness < 0.0 {
-            bail!("vividness must be >= 0, got {}", self.vividness);
+        if !self.vividness.is_finite() || self.vividness < 0.0 {
+            bail!(
+                "vividness must be a finite number >= 0, got {}",
+                self.vividness
+            );
         }
 
-        if self.gamma <= 0.0 {
-            bail!("gamma must be positive, got {}", self.gamma);
+        if !self.gamma.is_finite() || self.gamma <= 0.0 {
+            bail!("gamma must be a finite positive number, got {}", self.gamma);
         }
 
         if !(0.0..=1.0).contains(&self.min_saturation) {
