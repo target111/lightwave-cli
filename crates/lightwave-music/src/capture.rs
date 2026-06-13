@@ -4,25 +4,15 @@ use anyhow::{Context, Result, anyhow, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, HostId, Sample, SampleFormat, StreamConfig};
 
-pub struct DeviceInfo {
-    pub name: String,
-    pub is_default: bool,
-}
-
-pub fn list_devices() -> Result<Vec<DeviceInfo>> {
+pub fn list_devices() -> Result<Vec<String>> {
     let host = cpal::default_host();
-    let default_name = host.default_input_device().map(|d| device_name(&d));
 
     // Under the PipeWire backend, output sinks are exposed as input-capable
     // devices, so picking one here captures its monitor (whatever is playing).
     let devices = host
         .input_devices()
         .context("enumerating audio devices")?
-        .map(|device| {
-            let name = device_name(&device);
-            let is_default = Some(&name) == default_name.as_ref();
-            DeviceInfo { name, is_default }
-        })
+        .map(|device| device_name(&device))
         .collect();
 
     Ok(devices)
@@ -42,12 +32,15 @@ impl Capture {
     pub fn open(filter: Option<&str>, sample_rate: Option<u32>, fft_size: usize) -> Result<Self> {
         let host = cpal::default_host();
 
-        let device = match filter {
-            Some(filter) => find_device(&host, filter)?,
+        let (device, name) = match filter {
+            Some(filter) => {
+                let device = find_device(&host, filter)?;
+                let name = device_name(&device);
+                (device, name)
+            }
             None => default_device(&host)?,
         };
 
-        let name = device_name(&device);
         let (config, format) = pick_config(&device, sample_rate)?;
 
         let ring = Arc::new(Mutex::new(Ring {
@@ -102,19 +95,24 @@ fn device_name(device: &Device) -> String {
         .unwrap_or_else(|_| "<unknown>".to_string())
 }
 
-/// The default capture target. On PipeWire that's the default output sink,
-/// whose monitor cpal captures when opened as input — so the visualizer
-/// follows whatever is playing out of the box. Other backends have no such
-/// loopback, so they fall back to the default input (microphone/line-in).
-fn default_device(host: &Host) -> Result<Device> {
+/// The default capture target, paired with a human-readable label. On PipeWire
+/// that's the default output sink, whose monitor cpal captures when opened as
+/// input — so the visualizer follows whatever is playing out of the box. Other
+/// backends have no such loopback, so they fall back to the default input
+/// (microphone/line-in). The label is derived from the selection path, not the
+/// backend's internal node name, so it stays stable across cpal versions.
+fn default_device(host: &Host) -> Result<(Device, String)> {
     if host.id() == HostId::PipeWire
         && let Some(sink) = host.default_output_device()
     {
-        return Ok(sink);
+        return Ok((sink, "default output (monitor)".to_string()));
     }
 
-    host.default_input_device()
-        .ok_or_else(|| anyhow!("no default capture device; try --list-devices"))
+    let device = host
+        .default_input_device()
+        .ok_or_else(|| anyhow!("no default capture device; try --list-devices"))?;
+
+    Ok((device, "default input".to_string()))
 }
 
 fn find_device(host: &Host, filter: &str) -> Result<Device> {

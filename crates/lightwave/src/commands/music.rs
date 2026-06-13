@@ -7,8 +7,7 @@ use lightwave_music::{Config, Streamer};
 
 #[derive(clap::Args)]
 pub struct MusicArgs {
-    /// Capture device (case-insensitive substring match); on PipeWire, name an
-    /// output sink to capture what's playing [default: system input]
+    /// Capture device (case-insensitive substring match)
     #[arg(long)]
     device: Option<String>,
 
@@ -149,12 +148,7 @@ fn list_devices(json_mode: bool) -> Result<()> {
     if json_mode {
         let devices = devices
             .iter()
-            .map(|d| {
-                json!({
-                    "name": &d.name,
-                    "default": d.is_default,
-                })
-            })
+            .map(|name| json!({ "name": name }))
             .collect::<Vec<_>>();
 
         return crate::commands::print_json(&json!({
@@ -175,17 +169,8 @@ fn list_devices(json_mode: bool) -> Result<()> {
         if devices.len() == 1 { "" } else { "s" }
     );
 
-    for device in &devices {
-        if device.is_default {
-            println!(
-                "  {}  {}  {}",
-                "▸".bright_magenta(),
-                device.name.bright_white().bold(),
-                "(default)".dimmed()
-            );
-        } else {
-            println!("  {}  {}", "▸".bright_magenta(), device.name);
-        }
+    for name in &devices {
+        println!("  {}  {}", "▸".bright_magenta(), name);
     }
 
     println!();

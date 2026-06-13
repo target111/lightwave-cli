@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use tokio::time::MissedTickBehavior;
 
-pub use capture::{DeviceInfo, list_devices};
+pub use capture::list_devices;
 
 pub struct Config {
     /// Case-insensitive substring match on device names; None = default input.
