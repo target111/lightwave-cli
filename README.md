@@ -1,5 +1,7 @@
 # lightwave-cli
 
+[![CI](https://github.com/target111/lightwave-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/target111/lightwave-cli/actions/workflows/ci.yml)
+
 CLI for LightWave-Server: manage presets, colors, and brightness, and feed
 the music visualizer and ambilight presets with live audio and screen
 colors.
