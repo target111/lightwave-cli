@@ -1,0 +1,62 @@
+# Continuous Integration
+#
+# Runs on every push to master and on every pull request. It builds the
+# workspace, runs the tests, checks formatting, and runs the Clippy linter.
+# If any step fails, GitHub marks the commit / PR with a red X so you catch
+# breakage before it lands.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Cancel an in-progress run if you push again to the same branch/PR, so you
+# don't waste CI minutes on stale commits.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # cpal (ALSA), pipewire, and ashpd link against system libraries, so we
+      # need their development headers. clang is required because the pipewire
+      # crate generates bindings with bindgen at build time.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libclang-dev \
+            clang \
+            pkg-config
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Caches compiled dependencies between runs so CI stays fast.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run Clippy (lint)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: Run tests
+        run: cargo test --workspace
