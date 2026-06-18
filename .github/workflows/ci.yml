@@ -6,10 +6,19 @@
 # breakage before it lands.
 name: CI
 
+# paths-ignore skips the whole run when a push/PR only touches these files,
+# so doc-only changes don't trigger a full compile. If a commit touches both
+# a doc file and any other file, CI still runs.
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - "**/*.md"
+      - LICENSE
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - LICENSE
 
 # Cancel an in-progress run if you push again to the same branch/PR, so you
 # don't waste CI minutes on stale commits.
