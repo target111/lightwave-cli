@@ -1,11 +1,11 @@
 //! Windows backend: captures a monitor through the Windows.Graphics.Capture
 //! API via the `windows-capture` crate.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result};
 use std::time::Duration;
 use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame as WgcFrame;
-use windows_capture::graphics_capture_api::InternalCaptureControl;
+use windows_capture::graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl};
 use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -30,37 +30,55 @@ impl Capture {
         F: FnMut(Frame<'_>) + Send + 'static,
     {
         let monitor = match options.monitor {
-            Some(index) => Monitor::from_index(index)
-                .map_err(|err| anyhow!("finding monitor {index}: {err}"))?,
-            None => {
-                Monitor::primary().map_err(|err| anyhow!("finding the primary monitor: {err}"))?
+            Some(index) => {
+                Monitor::from_index(index).with_context(|| format!("finding monitor {index}"))?
             }
+            None => Monitor::primary().context("finding the primary monitor")?,
         };
 
         let size = (
-            monitor
-                .width()
-                .map_err(|err| anyhow!("querying monitor width: {err}"))?,
-            monitor
-                .height()
-                .map_err(|err| anyhow!("querying monitor height: {err}"))?,
+            monitor.width().context("querying monitor width")?,
+            monitor.height().context("querying monitor height")?,
         );
+
+        // The session toggles below are version-gated WinRT properties;
+        // asking for one on a Windows build that lacks it fails the whole
+        // capture, so fall back to the system default where unsupported.
+        let cursor = if GraphicsCaptureApi::is_cursor_settings_supported().unwrap_or(false) {
+            CursorCaptureSettings::WithoutCursor
+        } else {
+            CursorCaptureSettings::Default
+        };
+
+        let border = if GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false) {
+            DrawBorderSettings::WithoutBorder
+        } else {
+            eprintln!("note: this Windows build always draws a border around captured screens");
+            DrawBorderSettings::Default
+        };
+
+        // The sender paces UDP packets; this just keeps the compositor
+        // from waking us at full refresh rate in between.
+        let min_update =
+            if GraphicsCaptureApi::is_minimum_update_interval_supported().unwrap_or(false) {
+                MinimumUpdateIntervalSettings::Custom(Duration::from_secs(1) / options.max_fps)
+            } else {
+                MinimumUpdateIntervalSettings::Default
+            };
 
         let settings = Settings::new(
             monitor,
-            CursorCaptureSettings::WithoutCursor,
-            DrawBorderSettings::WithoutBorder,
+            cursor,
+            border,
             SecondaryWindowSettings::Default,
-            // The sender paces UDP packets; this just keeps the compositor
-            // from waking us at full refresh rate in between.
-            MinimumUpdateIntervalSettings::Custom(Duration::from_secs(1) / options.max_fps),
+            min_update,
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
             Box::new(on_frame) as OnFrame,
         );
 
-        let control = Handler::start_free_threaded(settings)
-            .map_err(|err| anyhow!("starting Windows graphics capture: {err}"))?;
+        let control =
+            Handler::start_free_threaded(settings).context("starting Windows graphics capture")?;
 
         Ok(Self {
             control: Some(control),

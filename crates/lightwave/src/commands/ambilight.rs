@@ -41,12 +41,12 @@ pub struct AmbilightArgs {
     fps: u32,
 
     /// Show the screen picker again instead of reusing the saved permission
-    /// (Linux only)
+    #[cfg(target_os = "linux")]
     #[arg(long)]
     reselect: bool,
 
-    /// Monitor index to capture, 1-based, primary if unset (Windows only;
-    /// the portal picker chooses on Linux)
+    /// Monitor index to capture, 1-based, primary if unset
+    #[cfg(windows)]
     #[arg(long)]
     monitor: Option<usize>,
 
@@ -75,7 +75,9 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
         min_saturation: args.min_saturation,
         reverse: args.reverse,
         fps: args.fps,
+        #[cfg(target_os = "linux")]
         reselect: args.reselect,
+        #[cfg(windows)]
         monitor: args.monitor,
         target: target.clone(),
     };

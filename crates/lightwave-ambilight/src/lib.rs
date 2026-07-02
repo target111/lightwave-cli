@@ -10,7 +10,7 @@ compile_error!(
      build without the `ambilight` feature on other platforms"
 );
 
-pub mod capture;
+mod capture;
 mod sampler;
 
 use std::net::UdpSocket;
@@ -44,11 +44,11 @@ pub struct Config {
     pub reverse: bool,
     /// UDP packets per second; also caps the negotiated capture rate.
     pub fps: u32,
-    /// Ignore the saved portal permission and show the picker again
-    /// (Linux only).
+    /// Ignore the saved portal permission and show the picker again.
+    #[cfg(target_os = "linux")]
     pub reselect: bool,
-    /// 1-based monitor index to capture, primary if unset (Windows only;
-    /// on Linux the portal picker chooses).
+    /// 1-based monitor index to capture, primary if unset.
+    #[cfg(windows)]
     pub monitor: Option<usize>,
     /// UDP target, e.g. "192.168.1.20:5556".
     pub target: String,
@@ -123,7 +123,9 @@ impl Streamer {
         let capture = Capture::open(
             &CaptureOptions {
                 max_fps: config.fps,
+                #[cfg(target_os = "linux")]
                 reselect: config.reselect,
+                #[cfg(windows)]
                 monitor: config.monitor,
             },
             move |frame| {

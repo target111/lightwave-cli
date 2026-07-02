@@ -15,16 +15,16 @@ mod windows;
 #[cfg(windows)]
 pub use windows::Capture;
 
-/// Backend-independent capture settings; each backend interprets the
-/// fields that apply to it.
+/// Capture settings; fields only one backend understands are cfg-gated
+/// to its platform.
 pub struct CaptureOptions {
     /// Upper bound on the capture framerate.
     pub max_fps: u32,
-    /// Ignore the saved portal permission and show the picker again
-    /// (Linux only).
+    /// Ignore the saved portal permission and show the picker again.
+    #[cfg(target_os = "linux")]
     pub reselect: bool,
-    /// 1-based monitor index to capture, primary if unset (Windows only;
-    /// on Linux the portal picker chooses).
+    /// 1-based monitor index to capture, primary if unset.
+    #[cfg(windows)]
     pub monitor: Option<usize>,
 }
 
@@ -41,6 +41,9 @@ pub struct Frame<'a> {
 /// Pixel layouts the sampler understands; the alpha/padding byte of the
 /// 4-byte formats is ignored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// Each backend constructs only the formats its platform delivers, so any
+// single-platform build leaves some variants unused.
+#[allow(dead_code)]
 pub enum PixelFormat {
     Bgrx,
     Rgbx,
