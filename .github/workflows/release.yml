@@ -1,0 +1,99 @@
+# Release
+#
+# Triggered by pushing a version tag (e.g. `git tag v1.0.0 && git push --tags`).
+# Builds a binary for each platform in the matrix, packages it, and attaches
+# all packages to a GitHub Release for that tag.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: lightwave.exe
+            # music + ambilight are both default features; nothing extra needed.
+            cargo_flags: ""
+          - name: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            bin: lightwave
+            # ambilight doesn't compile outside Linux/Windows.
+            cargo_flags: "--no-default-features --features music"
+          - name: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            bin: lightwave
+            cargo_flags: "--no-default-features --features music"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: >
+          cargo build --release --locked -p lightwave
+          --target ${{ matrix.target }} ${{ matrix.cargo_flags }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="lightwave-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "$staging/"
+          cp README.md "$staging/" 2>/dev/null || true
+
+          if [[ "${{ matrix.os }}" == windows-* ]]; then
+            7z a "$staging.zip" "$staging" >/dev/null
+            echo "ASSET=$staging.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "$staging.tar.gz" "$staging"
+            echo "ASSET=$staging.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.ASSET }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          draft: false
+          generate_release_notes: true
