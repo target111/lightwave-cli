@@ -8,7 +8,25 @@
 #[cfg(target_os = "linux")]
 mod pipewire;
 #[cfg(target_os = "linux")]
-pub use pipewire::{Capture, CaptureOptions};
+pub use pipewire::Capture;
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::Capture;
+
+/// Backend-independent capture settings; each backend interprets the
+/// fields that apply to it.
+pub struct CaptureOptions {
+    /// Upper bound on the capture framerate.
+    pub max_fps: u32,
+    /// Ignore the saved portal permission and show the picker again
+    /// (Linux only).
+    pub reselect: bool,
+    /// 1-based monitor index to capture, primary if unset (Windows only;
+    /// on Linux the portal picker chooses).
+    pub monitor: Option<usize>,
+}
 
 /// A borrowed view of one captured video frame.
 pub struct Frame<'a> {

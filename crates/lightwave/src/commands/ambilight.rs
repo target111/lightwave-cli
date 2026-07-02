@@ -41,8 +41,14 @@ pub struct AmbilightArgs {
     fps: u32,
 
     /// Show the screen picker again instead of reusing the saved permission
+    /// (Linux only)
     #[arg(long)]
     reselect: bool,
+
+    /// Monitor index to capture, 1-based, primary if unset (Windows only;
+    /// the portal picker chooses on Linux)
+    #[arg(long)]
+    monitor: Option<usize>,
 
     /// UDP port the ambilight preset listens on
     #[arg(long, default_value_t = 5556)]
@@ -70,6 +76,7 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
         reverse: args.reverse,
         fps: args.fps,
         reselect: args.reselect,
+        monitor: args.monitor,
         target: target.clone(),
     };
 

@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, Host, HostId, Sample, SampleFormat, StreamConfig};
+use cpal::{Device, Host, Sample, SampleFormat, StreamConfig};
 
 pub fn list_devices() -> Result<Vec<String>> {
     let host = cpal::default_host();
@@ -98,7 +98,9 @@ fn device_name(device: &Device) -> String {
 /// (microphone/line-in). The label is derived from the selection path, not the
 /// backend's internal node name, so it stays stable across cpal versions.
 fn default_device(host: &Host) -> Result<(Device, String)> {
-    if host.id() == HostId::PipeWire
+    // The PipeWire host only exists in cpal's Linux builds.
+    #[cfg(target_os = "linux")]
+    if host.id() == cpal::HostId::PipeWire
         && let Some(sink) = host.default_output_device()
     {
         return Ok((sink, "default output (monitor)".to_string()));

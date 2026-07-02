@@ -11,3 +11,6 @@ tokio.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd.workspace = true
 pipewire.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-capture.workspace = true

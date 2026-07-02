@@ -1,15 +1,16 @@
 //! Screen-capture client for the ambilight preset: grabs frames via the
-//! desktop portal, reduces each one to per-box average colors, and
-//! streams the boxes over UDP in the preset's packet format (packed
-//! little-endian f32 RGB triplets, 0..=1).
+//! platform's capture API (xdg-desktop-portal + PipeWire on Linux,
+//! Windows.Graphics.Capture on Windows), reduces each one to per-box
+//! average colors, and streams the boxes over UDP in the preset's packet
+//! format (packed little-endian f32 RGB triplets, 0..=1).
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 compile_error!(
-    "lightwave-ambilight only supports Linux (xdg-desktop-portal + PipeWire); \
+    "lightwave-ambilight only supports Linux and Windows; \
      build without the `ambilight` feature on other platforms"
 );
 
-mod capture;
+pub mod capture;
 mod sampler;
 
 use std::net::UdpSocket;
@@ -43,8 +44,12 @@ pub struct Config {
     pub reverse: bool,
     /// UDP packets per second; also caps the negotiated capture rate.
     pub fps: u32,
-    /// Ignore the saved portal permission and show the picker again.
+    /// Ignore the saved portal permission and show the picker again
+    /// (Linux only).
     pub reselect: bool,
+    /// 1-based monitor index to capture, primary if unset (Windows only;
+    /// on Linux the portal picker chooses).
+    pub monitor: Option<usize>,
     /// UDP target, e.g. "192.168.1.20:5556".
     pub target: String,
 }
@@ -119,6 +124,7 @@ impl Streamer {
             &CaptureOptions {
                 max_fps: config.fps,
                 reselect: config.reselect,
+                monitor: config.monitor,
             },
             move |frame| {
                 let boxes = sampler.sample(&frame);

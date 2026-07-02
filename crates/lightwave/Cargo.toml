@@ -10,7 +10,7 @@ path = "src/main.rs"
 [features]
 default = ["music", "ambilight"]
 music = ["dep:lightwave-music"]
-# Linux-only: lightwave-ambilight fails to compile elsewhere.
+# Linux and Windows only: lightwave-ambilight fails to compile elsewhere.
 ambilight = ["dep:lightwave-ambilight"]
 
 [dependencies]

@@ -15,18 +15,11 @@ use ashpd::enumflags2::BitFlags;
 use pipewire as pw;
 use pw::spa;
 
-use super::{Frame, PixelFormat};
+use super::{CaptureOptions, Frame, PixelFormat};
 
 /// How long to wait for the compositor to negotiate a video format after
 /// the portal hands over the stream.
 const FORMAT_TIMEOUT: Duration = Duration::from_secs(10);
-
-pub struct CaptureOptions {
-    /// Upper bound on the negotiated capture framerate.
-    pub max_fps: u32,
-    /// Ignore the saved portal permission and show the picker again.
-    pub reselect: bool,
-}
 
 /// A running screen capture; frames flow to the callback passed to
 /// [`Capture::open`] from a dedicated PipeWire thread until drop.

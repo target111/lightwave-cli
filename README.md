@@ -56,13 +56,15 @@ On Windows, WASAPI loopback devices appear in `--list-devices`, so system
 audio can be captured by picking an output device with `--device`. On
 macOS, loopback needs a virtual device such as BlackHole.
 
-## Ambilight (Linux only; windows support coming soon :)
+## Ambilight (Linux & Windows)
 
-`lightwave ambilight` captures the screen via xdg-desktop-portal +
-PipeWire, averages an edge band into N box colors, and streams them over
-UDP to the `Ambilight` preset, which it starts and stops for you. The
-first run shows the portal's screen picker; the permission is saved after
-that (`--reselect` shows it again).
+`lightwave ambilight` captures the screen (xdg-desktop-portal + PipeWire
+on Linux, Windows.Graphics.Capture on Windows), averages an edge band
+into N box colors, and streams them over UDP to the `Ambilight` preset,
+which it starts and stops for you. On Linux the first run shows the
+portal's screen picker and saves the permission (`--reselect` shows it
+again); on Windows it captures the primary monitor, or pick one with
+`--monitor <N>`.
 
 ```sh
 lightwave ambilight                    # bottom edge, 16 boxes, 30 fps
@@ -81,8 +83,7 @@ Color tuning (see `--help` for everything):
 - `--min-saturation` — render near-grey content as a clear dim color by
   amplifying its existing tint (0 = off; ~0.3 is plenty).
 
-`--json` emits the same newline-delimited events as `music`. On Linux both
-the `music` and `ambilight` features (on by default) need the PipeWire
-headers and libclang; on non-Linux targets the PipeWire dependency drops
-out, but `ambilight` is Linux-only, so build with `--no-default-features
---features music`.
+`--json` emits the same newline-delimited events as `music`. On Linux the
+`music` and `ambilight` features (on by default) need the PipeWire headers
+and libclang; Windows builds with the stock toolchain. Other platforms:
+build with `--no-default-features --features music`.

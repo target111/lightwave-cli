@@ -10,12 +10,23 @@ edition = "2024"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.13", features = ["blocking", "json"] }
+# Default features minus default-tls (rustls + aws-lc, a C build that
+# can't cross-compile and needs cmake/NASM on Windows); native-tls uses
+# openssl on Linux and schannel on Windows instead.
+reqwest = { version = "0.13", default-features = false, features = [
+    "blocking",
+    "json",
+    "charset",
+    "http2",
+    "system-proxy",
+    "native-tls",
+] }
 clap = { version = "4.5", features = ["derive"] }
 cpal = "0.18.1"
 realfft = "3"
 ashpd = { version = "0.13", features = ["screencast"] }
 pipewire = "0.10"
+windows-capture = "2.0"
 owo-colors = "4"
 anstyle = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
