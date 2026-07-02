@@ -1,9 +1,10 @@
 # Continuous Integration
 #
-# Runs on every push to master and on every pull request. It builds the
-# workspace, runs the tests, checks formatting, and runs the Clippy linter.
-# If any step fails, GitHub marks the commit / PR with a red X so you catch
-# breakage before it lands.
+# Runs on every push to master and on every pull request, on both Linux
+# and Windows (the cfg-gated capture backends mean each platform compiles
+# code the other never sees). It builds the workspace, runs the tests,
+# checks formatting, and runs the Clippy linter. If any step fails, GitHub
+# marks the commit / PR with a red X so you catch breakage before it lands.
 name: CI
 
 # paths-ignore skips the whole run when a push/PR only touches these files,
@@ -31,15 +32,24 @@ env:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    strategy:
+      # Let the other platform finish even if one fails, so a red run
+      # shows every broken platform at once.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
 
       # cpal (ALSA), pipewire, and ashpd link against system libraries, so we
       # need their development headers. clang is required because the pipewire
-      # crate generates bindings with bindgen at build time.
+      # crate generates bindings with bindgen at build time. Windows needs
+      # nothing extra: cpal uses WASAPI and the capture backend uses WinRT,
+      # both part of the stock toolchain.
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -58,7 +68,9 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
 
+      # Formatting is platform-independent, so one platform checks it.
       - name: Check formatting
+        if: runner.os == 'Linux'
         run: cargo fmt --all --check
 
       - name: Run Clippy (lint)
