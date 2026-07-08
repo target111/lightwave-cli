@@ -43,15 +43,15 @@ pub struct MusicArgs {
     #[arg(long, default_value_t = 16000.0)]
     max_freq: f32,
 
-    /// UDP port the visualizer preset listens on
+    /// UDP port the visualizer effect listens on
     #[arg(long, default_value_t = 5555)]
     port: u16,
 
-    /// Name of the visualizer preset on the server
+    /// Name of the visualizer effect on the server
     #[arg(long, default_value = "MusicVisualizer")]
-    preset: String,
+    effect: String,
 
-    /// Stream UDP only; don't start/stop the preset (assume it's running)
+    /// Stream UDP only; don't start/stop the effect (assume it's running)
     #[arg(long)]
     no_start: bool,
 }
@@ -79,17 +79,17 @@ pub fn run(client: &Client, args: &MusicArgs, json_mode: bool) -> Result<()> {
 
     if !args.no_start {
         client
-            .start(&args.preset, &json!({ "port": args.port }))
-            .with_context(|| format!("starting preset {}", args.preset))?;
+            .start(&args.effect, &json!({ "port": args.port }))
+            .with_context(|| format!("starting effect {}", args.effect))?;
     }
 
     if json_mode {
         // First line on stdout confirms the capture and socket are up and the
-        // preset was started; streaming begins right after. Consumers can block
+        // effect was started; streaming begins right after. Consumers can block
         // on it to know initialization succeeded.
         crate::commands::print_json(&json!({
             "event": "start",
-            "preset": args.preset,
+            "effect": args.effect,
             "device": streamer.device_name(),
             "sample_rate": streamer.sample_rate(),
             "target": target,
@@ -125,7 +125,7 @@ pub fn run(client: &Client, args: &MusicArgs, json_mode: bool) -> Result<()> {
     if !args.no_start
         && let Err(err) = client.stop()
     {
-        eprintln!("warning: failed to stop preset: {err:#}");
+        eprintln!("warning: failed to stop effect: {err:#}");
     }
 
     result?;

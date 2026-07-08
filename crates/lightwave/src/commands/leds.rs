@@ -5,6 +5,68 @@ use lightwave_core::{
 };
 use owo_colors::OwoColorize;
 
+pub fn state(c: &Client, json_mode: bool) -> Result<()> {
+    let state = c.led_state()?;
+
+    // A strip showing one non-black color everywhere is a "solid color" —
+    // the state manual controls and plugins care about.
+    let uniform = state
+        .pixels
+        .first()
+        .filter(|&&first| first != [0, 0, 0] && state.pixels.iter().all(|&p| p == first));
+    let uniform_hex = uniform.map(|[r, g, b]| format!("#{r:02x}{g:02x}{b:02x}"));
+    let lit = state.pixels.iter().any(|&p| p != [0, 0, 0]);
+
+    if json_mode {
+        crate::commands::print_ok_json(serde_json::json!({
+            "count": state.count,
+            "brightness": state.brightness,
+            "lit": lit,
+            "color": uniform_hex,
+            "pixels": state.pixels,
+        }))?;
+        return Ok(());
+    }
+
+    let filled = (state.brightness * 20.0).round() as usize;
+    let bar = (0..20)
+        .map(|i| if i < filled { '█' } else { '░' })
+        .collect::<String>();
+
+    println!(
+        "\n  {} {} LEDs · {} {:>3.0}%",
+        "●".bright_cyan(),
+        state.count.bold(),
+        bar.bright_yellow(),
+        state.brightness * 100.0
+    );
+
+    match (uniform, lit) {
+        (Some([r, g, b]), _) => println!(
+            "  {} solid {} {}",
+            "›".dimmed(),
+            uniform_hex.unwrap_or_default().bright_white().bold(),
+            "██".truecolor(*r, *g, *b)
+        ),
+        (None, true) => {
+            // Sample the strip down to a terminal-width preview.
+            let samples = 40.min(state.count);
+            let preview = (0..samples)
+                .map(|i| {
+                    let [r, g, b] = state.pixels[i * state.count / samples];
+                    "█".truecolor(r, g, b).to_string()
+                })
+                .collect::<String>();
+            println!("  {} {}", "›".dimmed(), preview);
+        }
+        (None, false) => println!("  {} off", "›".dimmed()),
+    }
+
+    println!();
+
+    Ok(())
+}
+
 pub fn set(c: &Client, input: &str, json_mode: bool) -> Result<()> {
     let hex = normalize(input)?;
     c.set_color(&hex)?;

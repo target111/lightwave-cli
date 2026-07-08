@@ -9,18 +9,18 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PresetSummary {
+pub struct EffectSummary {
     pub name: String,
     pub description: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PresetsListResponse {
-    pub presets: Vec<PresetSummary>,
+pub struct EffectsListResponse {
+    pub effects: Vec<EffectSummary>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PresetInfo {
+pub struct EffectInfo {
     pub description: String,
     pub args: Vec<ArgSchema>,
 }
@@ -35,17 +35,54 @@ pub struct ArgSchema {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RunningPreset {
+pub struct RunningEffect {
     pub name: String,
     pub description: String,
+    /// Preset the effect was started from, if any.
+    pub preset: Option<String>,
     pub start_time: String,
     pub duration_seconds: f64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PresetRecord {
+    pub name: String,
+    pub effect: String,
+    pub args: Value,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PresetsListResponse {
+    pub presets: Vec<PresetRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StartStatus {
+    pub status: String,
+    pub effect: Option<String>,
+    pub preset: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LedState {
+    pub count: usize,
+    pub brightness: f64,
+    pub pixels: Vec<[u8; 3]>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct StartRequest<'a> {
-    pub preset_name: &'a str,
+    pub effect_name: &'a str,
     pub args: &'a Value,
+}
+
+#[derive(Debug, Serialize)]
+struct PresetBody<'a> {
+    effect: &'a str,
+    args: &'a Value,
+    description: &'a str,
 }
 
 #[derive(Clone)]
@@ -131,6 +168,29 @@ impl Client {
             .with_context(|| format!("decoding response from {endpoint}"))
     }
 
+    /// GET that treats 404 as "not there" instead of an error.
+    fn get_json_opt<T>(&self, endpoint: &str, url: Url) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let response = self
+            .http
+            .get(url.clone())
+            .send()
+            .with_context(|| format!("GET {url}"))?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        let response = Self::ensure_success(response, endpoint)?;
+
+        response
+            .json()
+            .map(Some)
+            .with_context(|| format!("decoding response from {endpoint}"))
+    }
+
     fn post_json<T>(&self, endpoint: &str, url: Url, body: &T) -> Result<()>
     where
         T: Serialize + ?Sized,
@@ -162,47 +222,116 @@ impl Client {
         self.base.host_str().unwrap_or("localhost")
     }
 
+    // ---- effects ----
+
+    pub fn list_effects(&self) -> Result<EffectsListResponse> {
+        self.get_json("/effects", self.url(&["effects"])?)
+    }
+
+    /// Schema for one effect, or None if no effect has that name.
+    pub fn effect_info(&self, name: &str) -> Result<Option<EffectInfo>> {
+        let endpoint = format!("/effects/{name}");
+        self.get_json_opt(&endpoint, self.url(&["effects", name])?)
+    }
+
+    pub fn running(&self) -> Result<Option<RunningEffect>> {
+        self.get_json_opt("/effects/running", self.url(&["effects", "running"])?)
+    }
+
+    pub fn start(&self, name: &str, args: &Value) -> Result<()> {
+        let body = StartRequest {
+            effect_name: name,
+            args,
+        };
+
+        self.post_json("/effects/start", self.url(&["effects", "start"])?, &body)
+    }
+
+    pub fn stop(&self) -> Result<()> {
+        self.post_empty("/effects/stop", self.url(&["effects", "stop"])?)
+    }
+
+    // ---- presets ----
+
     pub fn list_presets(&self) -> Result<PresetsListResponse> {
         self.get_json("/presets", self.url(&["presets"])?)
     }
 
-    pub fn preset_info(&self, name: &str) -> Result<PresetInfo> {
+    pub fn save_preset(
+        &self,
+        name: &str,
+        effect: &str,
+        args: &Value,
+        description: &str,
+    ) -> Result<PresetRecord> {
         let endpoint = format!("/presets/{name}");
-        self.get_json(&endpoint, self.url(&["presets", name])?)
-    }
-
-    pub fn running(&self) -> Result<Option<RunningPreset>> {
-        let url = self.url(&["presets", "running"])?;
+        let url = self.url(&["presets", name])?;
+        let body = PresetBody {
+            effect,
+            args,
+            description,
+        };
 
         let response = self
             .http
-            .get(url.clone())
+            .put(url.clone())
+            .json(&body)
             .send()
-            .with_context(|| format!("GET {url}"))?;
+            .with_context(|| format!("PUT {url}"))?;
+
+        let response = Self::ensure_success(response, &endpoint)?;
+
+        response
+            .json()
+            .with_context(|| format!("decoding response from {endpoint}"))
+    }
+
+    /// Delete a preset; Ok(false) means the server has no preset by that name.
+    pub fn delete_preset(&self, name: &str) -> Result<bool> {
+        let endpoint = format!("/presets/{name}");
+        let url = self.url(&["presets", name])?;
+
+        let response = self
+            .http
+            .delete(url.clone())
+            .send()
+            .with_context(|| format!("DELETE {url}"))?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+
+        Self::ensure_success(response, &endpoint)?;
+        Ok(true)
+    }
+
+    /// Start a saved preset; Ok(None) means no preset by that name.
+    pub fn start_preset(&self, name: &str) -> Result<Option<StartStatus>> {
+        let endpoint = format!("/presets/{name}/start");
+        let url = self.url(&["presets", name, "start"])?;
+
+        let response = self
+            .http
+            .post(url.clone())
+            .send()
+            .with_context(|| format!("POST {url}"))?;
 
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
 
-        let response = Self::ensure_success(response, "/presets/running")?;
+        let response = Self::ensure_success(response, &endpoint)?;
 
         response
             .json()
             .map(Some)
-            .context("decoding response from /presets/running")
+            .with_context(|| format!("decoding response from {endpoint}"))
     }
 
-    pub fn start(&self, name: &str, args: &Value) -> Result<()> {
-        let body = StartRequest {
-            preset_name: name,
-            args,
-        };
+    // ---- leds ----
 
-        self.post_json("/presets/start", self.url(&["presets", "start"])?, &body)
-    }
-
-    pub fn stop(&self) -> Result<()> {
-        self.post_empty("/presets/stop", self.url(&["presets", "stop"])?)
+    pub fn led_state(&self) -> Result<LedState> {
+        self.get_json("/leds", self.url(&["leds"])?)
     }
 
     pub fn set_color(&self, hex: &str) -> Result<()> {

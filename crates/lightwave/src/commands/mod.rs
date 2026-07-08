@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 #[cfg(feature = "ambilight")]
 pub mod ambilight;
+pub mod effects;
 pub mod leds;
 #[cfg(feature = "music")]
 pub mod music;

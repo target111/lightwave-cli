@@ -8,16 +8,28 @@ use lightwave_core::{
     color::{normalize, parse_hex_rgb},
 };
 
-pub fn run(client: &Client, preset: &str, rest: &[String], json_mode: bool) -> Result<()> {
-    let info = client
-        .preset_info(preset)
-        .with_context(|| format!("fetching schema for {preset}"))?;
+pub fn run(client: &Client, name: &str, rest: &[String], json_mode: bool) -> Result<()> {
+    // `start` takes an effect or a saved preset; the server forbids the
+    // names from colliding, so whichever matches is unambiguous.
+    match client.effect_info(name)? {
+        Some(info) => start_effect(client, name, &info.description, &info.args, rest, json_mode),
+        None => start_preset(client, name, rest, json_mode),
+    }
+}
 
+fn start_effect(
+    client: &Client,
+    effect: &str,
+    description: &str,
+    schema: &[ArgSchema],
+    rest: &[String],
+    json_mode: bool,
+) -> Result<()> {
     // clap stores arg/command identifiers as &'static str; leak the dynamic strings
-    let preset_name: &'static str = preset.to_string().leak();
-    let about: &'static str = info.description.clone().leak();
+    let effect_name: &'static str = effect.to_string().leak();
+    let about: &'static str = description.to_string().leak();
 
-    let mut cmd = Command::new(preset_name)
+    let mut cmd = Command::new(effect_name)
         .no_binary_name(true)
         .about(about)
         .disable_help_subcommand(true)
@@ -28,7 +40,7 @@ pub fn run(client: &Client, preset: &str, rest: &[String], json_mode: bool) -> R
                 .placeholder(anstyle::AnsiColor::BrightYellow.on_default()),
         );
 
-    for arg in &info.args {
+    for arg in schema {
         cmd = cmd.arg(build_arg(arg)?);
     }
 
@@ -50,7 +62,7 @@ pub fn run(client: &Client, preset: &str, rest: &[String], json_mode: bool) -> R
     // Only include flags the user actually set, so the server falls back to its own defaults.
     let mut payload = serde_json::Map::new();
 
-    for arg in &info.args {
+    for arg in schema {
         if matches.value_source(&arg.name) == Some(clap::parser::ValueSource::CommandLine) {
             let raw = matches
                 .get_one::<String>(&arg.name)
@@ -62,40 +74,72 @@ pub fn run(client: &Client, preset: &str, rest: &[String], json_mode: bool) -> R
 
     let args = Value::Object(payload);
 
-    client.start(preset, &args)?;
+    client.start(effect, &args)?;
 
     if json_mode {
         crate::commands::print_ok_json(serde_json::json!({
             "action": "start",
-            "preset": preset,
+            "effect": effect,
             "args": args,
         }))?;
     } else {
         println!(
             "  {} started {}",
             "▶".bright_green(),
-            preset.bright_white().bold()
+            effect.bright_white().bold()
         );
     }
 
     Ok(())
 }
 
-fn build_arg(arg: &ArgSchema) -> Result<Arg> {
+fn start_preset(client: &Client, name: &str, rest: &[String], json_mode: bool) -> Result<()> {
+    if !rest.is_empty() {
+        bail!(
+            "no effect named {name:?}; if you meant the preset, note that presets \
+             don't take arguments — their options are saved with `lightwave preset save`"
+        );
+    }
+
+    let Some(status) = client.start_preset(name)? else {
+        bail!("no effect or preset named {name:?}");
+    };
+
+    let effect = status.effect.unwrap_or_default();
+
+    if json_mode {
+        crate::commands::print_ok_json(serde_json::json!({
+            "action": "start",
+            "effect": effect,
+            "preset": name,
+        }))?;
+    } else {
+        println!(
+            "  {} started {}  {}",
+            "▶".bright_green(),
+            name.bright_white().bold(),
+            format!("({effect})").dimmed()
+        );
+    }
+
+    Ok(())
+}
+
+pub fn build_arg(arg: &ArgSchema) -> Result<Arg> {
     if arg.name.is_empty() {
-        bail!("preset argument name cannot be empty");
+        bail!("effect argument name cannot be empty");
     }
 
     if arg.name.starts_with('-') {
         bail!(
-            "invalid preset argument name {:?}: must not start with '-'",
+            "invalid effect argument name {:?}: must not start with '-'",
             arg.name
         );
     }
 
     if arg.name == "help" {
         bail!(
-            "invalid preset argument name {:?}: name is reserved",
+            "invalid effect argument name {:?}: name is reserved",
             arg.name
         );
     }
@@ -106,7 +150,7 @@ fn build_arg(arg: &ArgSchema) -> Result<Arg> {
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         bail!(
-            "invalid preset argument name {:?}: expected ASCII letters, numbers, '-' or '_'",
+            "invalid effect argument name {:?}: expected ASCII letters, numbers, '-' or '_'",
             arg.name
         );
     }
@@ -122,7 +166,7 @@ fn build_arg(arg: &ArgSchema) -> Result<Arg> {
 }
 
 /// Convert a string from clap into the JSON type the server expects.
-fn coerce(ty: &str, raw: &str) -> Result<Value> {
+pub fn coerce(ty: &str, raw: &str) -> Result<Value> {
     match ty {
         "int" => Ok(json!(
             raw.parse::<i64>()

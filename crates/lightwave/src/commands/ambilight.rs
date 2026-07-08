@@ -50,15 +50,15 @@ pub struct AmbilightArgs {
     #[arg(long)]
     monitor: Option<usize>,
 
-    /// UDP port the ambilight preset listens on
+    /// UDP port the ambilight effect listens on
     #[arg(long, default_value_t = 5556)]
     port: u16,
 
-    /// Name of the ambilight preset on the server
+    /// Name of the ambilight effect on the server
     #[arg(long, default_value = "Ambilight")]
-    preset: String,
+    effect: String,
 
-    /// Stream UDP only; don't start/stop the preset (assume it's running)
+    /// Stream UDP only; don't start/stop the effect (assume it's running)
     #[arg(long)]
     no_start: bool,
 }
@@ -87,17 +87,17 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
 
     if !args.no_start {
         client
-            .start(&args.preset, &json!({ "port": args.port }))
-            .with_context(|| format!("starting preset {}", args.preset))?;
+            .start(&args.effect, &json!({ "port": args.port }))
+            .with_context(|| format!("starting effect {}", args.effect))?;
     }
 
     if json_mode {
         // First line on stdout confirms the capture and socket are up and the
-        // preset was started; streaming begins right after. Consumers can block
+        // effect was started; streaming begins right after. Consumers can block
         // on it to know initialization succeeded.
         crate::commands::print_json(&json!({
             "event": "start",
-            "preset": args.preset,
+            "effect": args.effect,
             "width": width,
             "height": height,
             "target": target,
@@ -134,7 +134,7 @@ pub fn run(client: &Client, args: &AmbilightArgs, json_mode: bool) -> Result<()>
     if !args.no_start
         && let Err(err) = client.stop()
     {
-        eprintln!("warning: failed to stop preset: {err:#}");
+        eprintln!("warning: failed to stop effect: {err:#}");
     }
 
     result?;
