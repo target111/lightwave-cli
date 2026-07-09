@@ -50,10 +50,11 @@ pub fn state(c: &Client, json_mode: bool) -> Result<()> {
         ),
         None if lit => {
             // Sample the strip down to a terminal-width preview.
-            let samples = 40.min(state.count);
+            let len = state.pixels.len();
+            let samples = 40.min(len);
             let preview = (0..samples)
                 .map(|i| {
-                    let [r, g, b] = state.pixels[i * state.count / samples];
+                    let [r, g, b] = state.pixels[i * len / samples];
                     "█".truecolor(r, g, b).to_string()
                 })
                 .collect::<String>();

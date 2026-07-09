@@ -11,22 +11,9 @@ pub fn list(c: &Client, json_mode: bool) -> Result<()> {
     let resp = c.list_presets()?;
 
     if json_mode {
-        let presets = resp
-            .presets
-            .iter()
-            .map(|p| {
-                json!({
-                    "name": &p.name,
-                    "effect": &p.effect,
-                    "description": &p.description,
-                    "args": &p.args,
-                })
-            })
-            .collect::<Vec<_>>();
-
         crate::commands::print_json(&json!({
             "ok": true,
-            "presets": presets,
+            "presets": resp.presets,
         }))?;
 
         return Ok(());
@@ -122,12 +109,7 @@ pub fn save(
     if json_mode {
         crate::commands::print_ok_json(json!({
             "action": "preset_save",
-            "preset": {
-                "name": &record.name,
-                "effect": &record.effect,
-                "description": &record.description,
-                "args": &record.args,
-            },
+            "preset": record,
         }))?;
     } else {
         println!(

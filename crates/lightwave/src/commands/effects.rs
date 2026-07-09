@@ -8,20 +8,9 @@ pub fn list(c: &Client, json_mode: bool) -> Result<()> {
     let resp = c.list_effects()?;
 
     if json_mode {
-        let effects = resp
-            .effects
-            .iter()
-            .map(|e| {
-                json!({
-                    "name": &e.name,
-                    "description": &e.description,
-                })
-            })
-            .collect::<Vec<_>>();
-
         crate::commands::print_json(&json!({
             "ok": true,
-            "effects": effects,
+            "effects": resp.effects,
         }))?;
 
         return Ok(());
@@ -60,24 +49,11 @@ pub fn info(c: &Client, name: &str, json_mode: bool) -> Result<()> {
     };
 
     if json_mode {
-        let args = info
-            .args
-            .iter()
-            .map(|a| {
-                json!({
-                    "name": &a.name,
-                    "type": &a.arg_type,
-                    "default": &a.default,
-                    "description": &a.description,
-                })
-            })
-            .collect::<Vec<_>>();
-
         crate::commands::print_json(&json!({
             "ok": true,
             "name": name,
-            "description": &info.description,
-            "args": args,
+            "description": info.description,
+            "args": info.args,
         }))?;
 
         return Ok(());
@@ -133,24 +109,11 @@ pub fn running(c: &Client, json_mode: bool) -> Result<()> {
     let running = c.running()?;
 
     if json_mode {
-        let payload = match &running {
-            None => json!({
-                "ok": true,
-                "running": null,
-            }),
-            Some(r) => json!({
-                "ok": true,
-                "running": {
-                    "name": &r.name,
-                    "description": &r.description,
-                    "preset": &r.preset,
-                    "start_time": &r.start_time,
-                    "duration_seconds": r.duration_seconds,
-                },
-            }),
-        };
+        crate::commands::print_json(&json!({
+            "ok": true,
+            "running": running,
+        }))?;
 
-        crate::commands::print_json(&payload)?;
         return Ok(());
     }
 

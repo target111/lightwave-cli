@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use reqwest::{
     StatusCode, Url,
-    blocking::{Client as HttpClient, Response},
+    blocking::{Client as HttpClient, RequestBuilder, Response},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -131,13 +131,39 @@ impl Client {
         Ok(url)
     }
 
-    fn ensure_success(response: Response, endpoint: &str) -> Result<Response> {
+    fn send(&self, request: RequestBuilder) -> Result<Response> {
+        let request = request.build().context("building request")?;
+        let context = format!("{} {}", request.method(), request.url());
+
+        self.http.execute(request).with_context(|| context)
+    }
+
+    /// Send `request` and error on any non-success status.
+    fn send_checked(&self, request: RequestBuilder) -> Result<Response> {
+        Self::ensure_success(self.send(request)?)
+    }
+
+    /// Send `request`, mapping a 404 response to `Ok(None)`; any other
+    /// non-success status is an error. On success the checked response is
+    /// returned for the caller to decode (or ignore).
+    fn send_opt(&self, request: RequestBuilder) -> Result<Option<Response>> {
+        let response = self.send(request)?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        Self::ensure_success(response).map(Some)
+    }
+
+    fn ensure_success(response: Response) -> Result<Response> {
         let status = response.status();
 
         if status.is_success() {
             return Ok(response);
         }
 
+        let endpoint = response.url().path().to_string();
         let body = response
             .text()
             .unwrap_or_else(|_| "<failed to read response body>".to_string());
@@ -149,92 +175,42 @@ impl Client {
         bail!("{endpoint} failed with HTTP {status}: {body}");
     }
 
-    fn get_json<T>(&self, endpoint: &str, url: Url) -> Result<T>
+    fn decode<T>(response: Response) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let response = self
-            .http
-            .get(url.clone())
-            .send()
-            .with_context(|| format!("GET {url}"))?;
-
-        let response = Self::ensure_success(response, endpoint)?;
+        let endpoint = response.url().path().to_string();
 
         response
             .json()
             .with_context(|| format!("decoding response from {endpoint}"))
     }
 
-    /// GET that treats 404 as "not there" instead of an error.
-    fn get_json_opt<T>(&self, endpoint: &str, url: Url) -> Result<Option<T>>
+    fn get_json<T>(&self, url: Url) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let response = self
-            .http
-            .get(url.clone())
-            .send()
-            .with_context(|| format!("GET {url}"))?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-
-        let response = Self::ensure_success(response, endpoint)?;
-
-        response
-            .json()
-            .map(Some)
-            .with_context(|| format!("decoding response from {endpoint}"))
+        Self::decode(self.send_checked(self.http.get(url))?)
     }
 
-    /// POST with no body that treats 404 as "not there" instead of an error.
-    fn post_json_opt<T>(&self, endpoint: &str, url: Url) -> Result<Option<T>>
+    /// Request that treats 404 as "not there" instead of an error.
+    fn json_opt<T>(&self, request: RequestBuilder) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
-        let response = self
-            .http
-            .post(url.clone())
-            .send()
-            .with_context(|| format!("POST {url}"))?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-
-        let response = Self::ensure_success(response, endpoint)?;
-
-        response
-            .json()
-            .map(Some)
-            .with_context(|| format!("decoding response from {endpoint}"))
+        self.send_opt(request)?.map(Self::decode).transpose()
     }
 
-    fn post_json<T>(&self, endpoint: &str, url: Url, body: &T) -> Result<()>
+    fn post_json<T>(&self, url: Url, body: &T) -> Result<()>
     where
         T: Serialize + ?Sized,
     {
-        let response = self
-            .http
-            .post(url.clone())
-            .json(body)
-            .send()
-            .with_context(|| format!("POST {url}"))?;
-
-        Self::ensure_success(response, endpoint)?;
+        self.send_checked(self.http.post(url).json(body))?;
         Ok(())
     }
 
-    fn post_empty(&self, endpoint: &str, url: Url) -> Result<()> {
-        let response = self
-            .http
-            .post(url.clone())
-            .send()
-            .with_context(|| format!("POST {url}"))?;
-
-        Self::ensure_success(response, endpoint)?;
+    fn post_empty(&self, url: Url) -> Result<()> {
+        self.send_checked(self.http.post(url))?;
         Ok(())
     }
 
@@ -246,17 +222,16 @@ impl Client {
     // ---- effects ----
 
     pub fn list_effects(&self) -> Result<EffectsListResponse> {
-        self.get_json("/effects", self.url(&["effects"])?)
+        self.get_json(self.url(&["effects"])?)
     }
 
     /// Schema for one effect, or None if no effect has that name.
     pub fn effect_info(&self, name: &str) -> Result<Option<EffectInfo>> {
-        let endpoint = format!("/effects/{name}");
-        self.get_json_opt(&endpoint, self.url(&["effects", name])?)
+        self.json_opt(self.http.get(self.url(&["effects", name])?))
     }
 
     pub fn running(&self) -> Result<Option<RunningEffect>> {
-        self.get_json_opt("/effects/running", self.url(&["effects", "running"])?)
+        self.json_opt(self.http.get(self.url(&["effects", "running"])?))
     }
 
     pub fn start(&self, name: &str, args: &Value) -> Result<()> {
@@ -265,17 +240,17 @@ impl Client {
             args,
         };
 
-        self.post_json("/effects/start", self.url(&["effects", "start"])?, &body)
+        self.post_json(self.url(&["effects", "start"])?, &body)
     }
 
     pub fn stop(&self) -> Result<()> {
-        self.post_empty("/effects/stop", self.url(&["effects", "stop"])?)
+        self.post_empty(self.url(&["effects", "stop"])?)
     }
 
     // ---- presets ----
 
     pub fn list_presets(&self) -> Result<PresetsListResponse> {
-        self.get_json("/presets", self.url(&["presets"])?)
+        self.get_json(self.url(&["presets"])?)
     }
 
     pub fn save_preset(
@@ -285,67 +260,38 @@ impl Client {
         args: &Value,
         description: &str,
     ) -> Result<PresetRecord> {
-        let endpoint = format!("/presets/{name}");
-        let url = self.url(&["presets", name])?;
         let body = PresetBody {
             effect,
             args,
             description,
         };
+        let request = self.http.put(self.url(&["presets", name])?).json(&body);
 
-        let response = self
-            .http
-            .put(url.clone())
-            .json(&body)
-            .send()
-            .with_context(|| format!("PUT {url}"))?;
-
-        let response = Self::ensure_success(response, &endpoint)?;
-
-        response
-            .json()
-            .with_context(|| format!("decoding response from {endpoint}"))
+        Self::decode(self.send_checked(request)?)
     }
 
     /// Delete a preset; Ok(false) means the server has no preset by that name.
     pub fn delete_preset(&self, name: &str) -> Result<bool> {
-        let endpoint = format!("/presets/{name}");
-        let url = self.url(&["presets", name])?;
+        let request = self.http.delete(self.url(&["presets", name])?);
 
-        let response = self
-            .http
-            .delete(url.clone())
-            .send()
-            .with_context(|| format!("DELETE {url}"))?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(false);
-        }
-
-        Self::ensure_success(response, &endpoint)?;
-        Ok(true)
+        Ok(self.send_opt(request)?.is_some())
     }
 
     /// Start a saved preset; Ok(None) means no preset by that name.
     pub fn start_preset(&self, name: &str) -> Result<Option<StartStatus>> {
-        let endpoint = format!("/presets/{name}/start");
-        self.post_json_opt(&endpoint, self.url(&["presets", name, "start"])?)
+        self.json_opt(self.http.post(self.url(&["presets", name, "start"])?))
     }
 
     // ---- leds ----
 
     pub fn led_state(&self) -> Result<LedState> {
-        self.get_json("/leds", self.url(&["leds"])?)
+        self.get_json(self.url(&["leds"])?)
     }
 
     pub fn set_color(&self, hex: &str) -> Result<()> {
         let body = serde_json::json!({ "color": hex });
 
-        self.post_json(
-            "/leds/color/set",
-            self.url(&["leds", "color", "set"])?,
-            &body,
-        )
+        self.post_json(self.url(&["leds", "color", "set"])?, &body)
     }
 
     pub fn set_brightness(&self, brightness: f32) -> Result<()> {
@@ -355,14 +301,10 @@ impl Client {
 
         let body = serde_json::json!({ "brightness": brightness });
 
-        self.post_json(
-            "/leds/brightness",
-            self.url(&["leds", "brightness"])?,
-            &body,
-        )
+        self.post_json(self.url(&["leds", "brightness"])?, &body)
     }
 
     pub fn clear(&self) -> Result<()> {
-        self.post_empty("/leds/color/clear", self.url(&["leds", "color", "clear"])?)
+        self.post_empty(self.url(&["leds", "color", "clear"])?)
     }
 }
