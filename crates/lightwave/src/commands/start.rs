@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow, bail};
-use clap::{Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, builder::PossibleValuesParser};
 use owo_colors::OwoColorize;
 use serde_json::{Value, json};
 
@@ -20,13 +20,9 @@ pub fn run(client: &Client, name: &str, rest: &[String], json_mode: bool) -> Res
 /// Base clap command for parsing an effect's dynamic args. Callers add the
 /// effect's schema (via `parse_effect_args`) plus any command-specific flags.
 pub fn effect_command(name: &str, description: &str) -> Command {
-    // clap stores arg/command identifiers as &'static str; leak the dynamic strings
-    let name: &'static str = name.to_string().leak();
-    let about: &'static str = description.to_string().leak();
-
-    Command::new(name)
+    Command::new(name.to_string())
         .no_binary_name(true)
-        .about(about)
+        .about(description.to_string())
         .disable_help_subcommand(true)
 }
 
@@ -174,14 +170,19 @@ fn build_arg(arg: &ArgSchema) -> Result<Arg> {
         );
     }
 
-    let name: &'static str = arg.name.clone().leak();
-    let help: &'static str = format!("{}  [default: {}]", arg.description, arg.default).leak();
+    let help = format!("{}  [default: {}]", arg.description, arg.default);
 
-    Ok(Arg::new(name)
-        .long(name)
+    let mut built = Arg::new(&arg.name)
+        .long(&arg.name)
         .help(help)
         .action(ArgAction::Set)
-        .required(false))
+        .required(false);
+
+    if !arg.choices.is_empty() {
+        built = built.value_parser(PossibleValuesParser::new(arg.choices.clone()));
+    }
+
+    Ok(built)
 }
 
 /// Convert a string from clap into the JSON type the server expects.
@@ -208,7 +209,8 @@ fn coerce(ty: &str, raw: &str) -> Result<Value> {
 
             Ok(json!([r, g, b]))
         }
-        "string" => Ok(json!(raw)),
+        // clap already checked the value against the option's choices.
+        "enum" => Ok(json!(raw)),
         other => {
             eprintln!("warning: unknown arg type {other:?}, sending as string");
             Ok(json!(raw))

@@ -32,6 +32,10 @@ pub struct ArgSchema {
     pub arg_type: String,
     pub default: Value,
     pub description: String,
+    /// Allowed values for an `enum` option; the server sends this only for
+    /// that type, so the flag becomes a closed dropdown of choices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -90,7 +90,7 @@ fn print_arg(a: &ArgSchema, name_w: usize) {
         "float" => ("◇", a.arg_type.bright_cyan().to_string()),
         "bool" => ("◉", a.arg_type.bright_magenta().to_string()),
         "color" => ("●", a.arg_type.bright_red().to_string()),
-        "string" => ("▪", a.arg_type.bright_green().to_string()),
+        "enum" => ("▪", a.arg_type.bright_green().to_string()),
         _ => ("•", a.arg_type.white().to_string()),
     };
 
@@ -103,6 +103,15 @@ fn print_arg(a: &ArgSchema, name_w: usize) {
         format!("[default: {}]", a.default).dimmed().italic(),
         w = name_w
     );
+
+    if !a.choices.is_empty() {
+        println!(
+            "    {:w$}    {}",
+            "",
+            format!("choices: {}", a.choices.join(", ")).dimmed().italic(),
+            w = name_w
+        );
+    }
 }
 
 pub fn running(c: &Client, json_mode: bool) -> Result<()> {
