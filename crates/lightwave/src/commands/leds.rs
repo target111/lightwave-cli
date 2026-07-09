@@ -41,14 +41,14 @@ pub fn state(c: &Client, json_mode: bool) -> Result<()> {
         state.brightness * 100.0
     );
 
-    match (uniform, lit) {
-        (Some([r, g, b]), _) => println!(
+    match uniform {
+        Some([r, g, b]) => println!(
             "  {} solid {} {}",
             "›".dimmed(),
-            uniform_hex.unwrap_or_default().bright_white().bold(),
+            format!("#{r:02x}{g:02x}{b:02x}").bright_white().bold(),
             "██".truecolor(*r, *g, *b)
         ),
-        (None, true) => {
+        None if lit => {
             // Sample the strip down to a terminal-width preview.
             let samples = 40.min(state.count);
             let preview = (0..samples)
@@ -59,7 +59,7 @@ pub fn state(c: &Client, json_mode: bool) -> Result<()> {
                 .collect::<String>();
             println!("  {} {}", "›".dimmed(), preview);
         }
-        (None, false) => println!("  {} off", "›".dimmed()),
+        None => println!("  {} off", "›".dimmed()),
     }
 
     println!();

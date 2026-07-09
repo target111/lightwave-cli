@@ -60,9 +60,7 @@ pub struct PresetsListResponse {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct StartStatus {
-    pub status: String,
     pub effect: Option<String>,
-    pub preset: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -178,6 +176,29 @@ impl Client {
             .get(url.clone())
             .send()
             .with_context(|| format!("GET {url}"))?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        let response = Self::ensure_success(response, endpoint)?;
+
+        response
+            .json()
+            .map(Some)
+            .with_context(|| format!("decoding response from {endpoint}"))
+    }
+
+    /// POST with no body that treats 404 as "not there" instead of an error.
+    fn post_json_opt<T>(&self, endpoint: &str, url: Url) -> Result<Option<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let response = self
+            .http
+            .post(url.clone())
+            .send()
+            .with_context(|| format!("POST {url}"))?;
 
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
@@ -308,24 +329,7 @@ impl Client {
     /// Start a saved preset; Ok(None) means no preset by that name.
     pub fn start_preset(&self, name: &str) -> Result<Option<StartStatus>> {
         let endpoint = format!("/presets/{name}/start");
-        let url = self.url(&["presets", name, "start"])?;
-
-        let response = self
-            .http
-            .post(url.clone())
-            .send()
-            .with_context(|| format!("POST {url}"))?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-
-        let response = Self::ensure_success(response, &endpoint)?;
-
-        response
-            .json()
-            .map(Some)
-            .with_context(|| format!("decoding response from {endpoint}"))
+        self.post_json_opt(&endpoint, self.url(&["presets", name, "start"])?)
     }
 
     // ---- leds ----

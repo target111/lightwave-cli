@@ -17,29 +17,30 @@ pub fn run(client: &Client, name: &str, rest: &[String], json_mode: bool) -> Res
     }
 }
 
-fn start_effect(
-    client: &Client,
-    effect: &str,
-    description: &str,
-    schema: &[ArgSchema],
-    rest: &[String],
-    json_mode: bool,
-) -> Result<()> {
+/// Base clap command for parsing an effect's dynamic args. Callers add the
+/// effect's schema (via `parse_effect_args`) plus any command-specific flags.
+pub fn effect_command(name: &str, description: &str) -> Command {
     // clap stores arg/command identifiers as &'static str; leak the dynamic strings
-    let effect_name: &'static str = effect.to_string().leak();
+    let name: &'static str = name.to_string().leak();
     let about: &'static str = description.to_string().leak();
 
-    let mut cmd = Command::new(effect_name)
+    Command::new(name)
         .no_binary_name(true)
         .about(about)
         .disable_help_subcommand(true)
-        .styles(
-            clap::builder::Styles::styled()
-                .header(anstyle::Style::new().bold().underline())
-                .literal(anstyle::AnsiColor::BrightCyan.on_default())
-                .placeholder(anstyle::AnsiColor::BrightYellow.on_default()),
-        );
+}
 
+/// Add `schema` as `--flags` to `cmd`, parse `rest`, and return the JSON
+/// payload of the options the user actually set — unset ones are omitted so
+/// the server falls back to its own defaults. The parsed matches are returned
+/// too, for callers that registered extra flags. On a parse error this prints
+/// clap's message (or a JSON error) and exits the process.
+pub fn parse_effect_args(
+    mut cmd: Command,
+    schema: &[ArgSchema],
+    rest: &[String],
+    json_mode: bool,
+) -> Result<(serde_json::Map<String, Value>, clap::ArgMatches)> {
     for arg in schema {
         cmd = cmd.arg(build_arg(arg)?);
     }
@@ -59,7 +60,6 @@ fn start_effect(
         }
     };
 
-    // Only include flags the user actually set, so the server falls back to its own defaults.
     let mut payload = serde_json::Map::new();
 
     for arg in schema {
@@ -72,6 +72,25 @@ fn start_effect(
         }
     }
 
+    Ok((payload, matches))
+}
+
+fn start_effect(
+    client: &Client,
+    effect: &str,
+    description: &str,
+    schema: &[ArgSchema],
+    rest: &[String],
+    json_mode: bool,
+) -> Result<()> {
+    let cmd = effect_command(effect, description).styles(
+        clap::builder::Styles::styled()
+            .header(anstyle::Style::new().bold().underline())
+            .literal(anstyle::AnsiColor::BrightCyan.on_default())
+            .placeholder(anstyle::AnsiColor::BrightYellow.on_default()),
+    );
+
+    let (payload, _) = parse_effect_args(cmd, schema, rest, json_mode)?;
     let args = Value::Object(payload);
 
     client.start(effect, &args)?;
@@ -125,7 +144,7 @@ fn start_preset(client: &Client, name: &str, rest: &[String], json_mode: bool) -
     Ok(())
 }
 
-pub fn build_arg(arg: &ArgSchema) -> Result<Arg> {
+fn build_arg(arg: &ArgSchema) -> Result<Arg> {
     if arg.name.is_empty() {
         bail!("effect argument name cannot be empty");
     }
@@ -166,7 +185,7 @@ pub fn build_arg(arg: &ArgSchema) -> Result<Arg> {
 }
 
 /// Convert a string from clap into the JSON type the server expects.
-pub fn coerce(ty: &str, raw: &str) -> Result<Value> {
+fn coerce(ty: &str, raw: &str) -> Result<Value> {
     match ty {
         "int" => Ok(json!(
             raw.parse::<i64>()
