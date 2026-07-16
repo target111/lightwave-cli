@@ -1082,7 +1082,7 @@ dependencies = [
 
 [[package]]
 name = "lightwave"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -1096,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "lightwave-ambilight"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -1108,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "lightwave-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "lightwave-music"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "cpal",

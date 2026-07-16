@@ -44,8 +44,27 @@ pub struct RunningEffect {
     pub description: String,
     /// Preset the effect was started from, if any.
     pub preset: Option<String>,
+    /// RFC 3339 UTC timestamp.
     pub start_time: String,
     pub duration_seconds: f64,
+}
+
+/// `GET /api/effects/running` body; `running` is null when the strip is idle.
+#[derive(Debug, Clone, Deserialize)]
+struct RunningResponse {
+    running: Option<RunningEffect>,
+}
+
+/// `GET /api/state` body: the strip summary without the pixel buffer.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StripState {
+    pub running: Option<RunningEffect>,
+    pub count: usize,
+    pub brightness: f64,
+    /// Solid color as "#rrggbb" when one is set; None when off or
+    /// effect-driven.
+    pub color: Option<String>,
+    pub lit: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -67,16 +86,24 @@ pub struct StartStatus {
     pub effect: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct StopStatus {
+    /// False when the strip was already idle — stopping is idempotent.
+    pub was_running: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LedState {
     pub count: usize,
     pub brightness: f64,
+    /// Solid color as "#rrggbb" when one is set; None when off or
+    /// effect-driven.
+    pub color: Option<String>,
     pub pixels: Vec<[u8; 3]>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct StartRequest<'a> {
-    pub effect_name: &'a str,
     pub args: &'a Value,
 }
 
@@ -120,6 +147,7 @@ impl Client {
         Ok(Self { base, http })
     }
 
+    /// URL for an endpoint; every API route lives under `/api`.
     fn url(&self, segments: &[&str]) -> Result<Url> {
         let mut url = self.base.clone();
 
@@ -129,6 +157,7 @@ impl Client {
                 .map_err(|_| anyhow!("server URL {} cannot be used as a base URL", self.base))?;
 
             path.pop_if_empty();
+            path.push("api");
             path.extend(segments.iter().copied());
         }
 
@@ -213,8 +242,11 @@ impl Client {
         Ok(())
     }
 
-    fn post_empty(&self, url: Url) -> Result<()> {
-        self.send_checked(self.http.post(url))?;
+    fn put_json<T>(&self, url: Url, body: &T) -> Result<()>
+    where
+        T: Serialize + ?Sized,
+    {
+        self.send_checked(self.http.put(url).json(body))?;
         Ok(())
     }
 
@@ -234,21 +266,27 @@ impl Client {
         self.json_opt(self.http.get(self.url(&["effects", name])?))
     }
 
+    /// The running effect, or None when the strip is idle (a normal
+    /// state — the server answers 200 with a null `running` field).
     pub fn running(&self) -> Result<Option<RunningEffect>> {
-        self.json_opt(self.http.get(self.url(&["effects", "running"])?))
+        let resp: RunningResponse = self.get_json(self.url(&["effects", "running"])?)?;
+
+        Ok(resp.running)
     }
 
     pub fn start(&self, name: &str, args: &Value) -> Result<()> {
-        let body = StartRequest {
-            effect_name: name,
-            args,
-        };
+        let body = StartRequest { args };
 
-        self.post_json(self.url(&["effects", "start"])?, &body)
+        self.post_json(self.url(&["effects", name, "start"])?, &body)
     }
 
-    pub fn stop(&self) -> Result<()> {
-        self.post_empty(self.url(&["effects", "stop"])?)
+    /// Stop whatever is running. Idempotent: Ok(false) means the strip
+    /// was already idle.
+    pub fn stop(&self) -> Result<bool> {
+        let request = self.http.post(self.url(&["effects", "stop"])?);
+        let status: StopStatus = Self::decode(self.send_checked(request)?)?;
+
+        Ok(status.was_running)
     }
 
     // ---- presets ----
@@ -286,7 +324,13 @@ impl Client {
         self.json_opt(self.http.post(self.url(&["presets", name, "start"])?))
     }
 
-    // ---- leds ----
+    // ---- leds / state ----
+
+    /// The one-request strip summary: running effect, brightness, solid
+    /// color, and lit — without the pixel buffer.
+    pub fn state(&self) -> Result<StripState> {
+        self.get_json(self.url(&["state"])?)
+    }
 
     pub fn led_state(&self) -> Result<LedState> {
         self.get_json(self.url(&["leds"])?)
@@ -295,7 +339,7 @@ impl Client {
     pub fn set_color(&self, hex: &str) -> Result<()> {
         let body = serde_json::json!({ "color": hex });
 
-        self.post_json(self.url(&["leds", "color", "set"])?, &body)
+        self.put_json(self.url(&["leds", "color"])?, &body)
     }
 
     pub fn set_brightness(&self, brightness: f32) -> Result<()> {
@@ -305,10 +349,11 @@ impl Client {
 
         let body = serde_json::json!({ "brightness": brightness });
 
-        self.post_json(self.url(&["leds", "brightness"])?, &body)
+        self.put_json(self.url(&["leds", "brightness"])?, &body)
     }
 
     pub fn clear(&self) -> Result<()> {
-        self.post_empty(self.url(&["leds", "color", "clear"])?)
+        self.send_checked(self.http.delete(self.url(&["leds", "color"])?))?;
+        Ok(())
     }
 }

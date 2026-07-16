@@ -8,13 +8,6 @@ use owo_colors::OwoColorize;
 pub fn state(c: &Client, json_mode: bool) -> Result<()> {
     let state = c.led_state()?;
 
-    // A strip showing one non-black color everywhere is a "solid color" —
-    // the state manual controls and plugins care about.
-    let uniform = state
-        .pixels
-        .first()
-        .filter(|&&first| first != [0, 0, 0] && state.pixels.iter().all(|&p| p == first));
-    let uniform_hex = uniform.map(|[r, g, b]| format!("#{r:02x}{g:02x}{b:02x}"));
     let lit = state.pixels.iter().any(|&p| p != [0, 0, 0]);
 
     if json_mode {
@@ -22,16 +15,13 @@ pub fn state(c: &Client, json_mode: bool) -> Result<()> {
             "count": state.count,
             "brightness": state.brightness,
             "lit": lit,
-            "color": uniform_hex,
+            "color": state.color,
             "pixels": state.pixels,
         }))?;
         return Ok(());
     }
 
-    let filled = (state.brightness * 20.0).round() as usize;
-    let bar = (0..20)
-        .map(|i| if i < filled { '█' } else { '░' })
-        .collect::<String>();
+    let bar = crate::commands::brightness_bar(state.brightness);
 
     println!(
         "\n  {} {} LEDs · {} {:>3.0}%",
@@ -41,12 +31,12 @@ pub fn state(c: &Client, json_mode: bool) -> Result<()> {
         state.brightness * 100.0
     );
 
-    match uniform {
+    match state.color.as_deref().and_then(parse_hex_rgb) {
         Some([r, g, b]) => println!(
             "  {} solid {} {}",
             "›".dimmed(),
             format!("#{r:02x}{g:02x}{b:02x}").bright_white().bold(),
-            "██".truecolor(*r, *g, *b)
+            "██".truecolor(r, g, b)
         ),
         None if lit => {
             // Sample the strip down to a terminal-width preview.
@@ -114,10 +104,7 @@ pub fn brightness(c: &Client, level: f32, json_mode: bool) -> Result<()> {
         return Ok(());
     }
 
-    let filled = (level * 20.0).round() as usize;
-    let bar = (0..20)
-        .map(|i| if i < filled { '█' } else { '░' })
-        .collect::<String>();
+    let bar = crate::commands::brightness_bar(level as f64);
 
     println!(
         "  {} brightness {} {:>5.0}%",

@@ -27,6 +27,8 @@ enum Cmd {
     Info { effect: String },
     /// Show the currently running effect
     Running,
+    /// One-line strip summary: running effect, brightness, solid color
+    Status,
     /// Start an effect or a saved preset. Pass --help after an effect name for its args.
     #[command(disable_help_flag = true)]
     Start {
@@ -85,7 +87,7 @@ fn main() -> Result<()> {
 
     let base = server
         .or_else(|| std::env::var("LIGHTWAVE_URL").ok())
-        .unwrap_or_else(|| "http://localhost:8080".to_string());
+        .unwrap_or_else(|| "http://localhost:8000".to_string());
 
     let result = (|| -> Result<()> {
         let client = api::Client::new(&base)
@@ -95,6 +97,7 @@ fn main() -> Result<()> {
             Cmd::Effects => commands::effects::list(&client, json),
             Cmd::Info { effect } => commands::effects::info(&client, &effect, json),
             Cmd::Running => commands::effects::running(&client, json),
+            Cmd::Status => commands::status::run(&client, json),
             Cmd::Start { name, rest } => commands::start::run(&client, &name, &rest, json),
             Cmd::Stop => commands::stop::run(&client, json),
             Cmd::Preset(PresetCmd::List) => commands::presets::list(&client, json),

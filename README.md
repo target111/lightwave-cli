@@ -10,11 +10,12 @@ audio and screen colors.
 cargo install --path crates/lightwave
 lightwave effects                 # list effects on the server
 lightwave start <effect> --help   # show an effect's args
-lightwave leds                    # current strip state
+lightwave status                  # strip summary: running effect, brightness, color
+lightwave leds                    # full strip state, pixels included
 ```
 
 The server URL comes from `--server` or the `LIGHTWAVE_URL` env var
-(default `http://localhost:8080`).
+(default `http://localhost:8000`).
 
 ## Presets
 

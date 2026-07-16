@@ -1,6 +1,7 @@
 use std::io::{self, Write};
 
 use anyhow::Result;
+use lightwave_core::RunningEffect;
 use serde_json::{Value, json};
 
 #[cfg(feature = "ambilight")]
@@ -11,7 +12,23 @@ pub mod leds;
 pub mod music;
 pub mod presets;
 pub mod start;
+pub mod status;
 pub mod stop;
+
+/// `{preset} · {name}`, or just `{name}` when the effect wasn't started from a preset.
+pub fn running_title(r: &RunningEffect) -> String {
+    match &r.preset {
+        Some(preset) => format!("{preset} · {}", r.name),
+        None => r.name.clone(),
+    }
+}
+
+/// 20-char bar of filled/empty blocks for a 0.0..=1.0 level.
+pub fn brightness_bar(level: f64) -> String {
+    let filled = (level * 20.0).round() as usize;
+
+    (0..20).map(|i| if i < filled { '█' } else { '░' }).collect()
+}
 
 pub fn print_json(value: &Value) -> Result<()> {
     let stdout = io::stdout();

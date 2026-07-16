@@ -129,10 +129,7 @@ pub fn running(c: &Client, json_mode: bool) -> Result<()> {
     match running {
         None => println!("  {}  nothing running", "○".dimmed()),
         Some(r) => {
-            let title = match &r.preset {
-                Some(preset) => format!("{preset} · {}", r.name),
-                None => r.name.clone(),
-            };
+            let title = crate::commands::running_title(&r);
             println!(
                 "\n  {} {}  {}",
                 "●".bright_green(),

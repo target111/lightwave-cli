@@ -4,5 +4,5 @@ pub mod net;
 
 pub use api::{
     ArgSchema, Client, EffectInfo, EffectSummary, EffectsListResponse, LedState, PresetRecord,
-    PresetsListResponse, RunningEffect, StartStatus,
+    PresetsListResponse, RunningEffect, StartStatus, StopStatus, StripState,
 };
