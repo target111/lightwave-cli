@@ -108,7 +108,9 @@ fn print_arg(a: &ArgSchema, name_w: usize) {
         println!(
             "    {:w$}    {}",
             "",
-            format!("choices: {}", a.choices.join(", ")).dimmed().italic(),
+            format!("choices: {}", a.choices.join(", "))
+                .dimmed()
+                .italic(),
             w = name_w
         );
     }

@@ -27,7 +27,9 @@ pub fn running_title(r: &RunningEffect) -> String {
 pub fn brightness_bar(level: f64) -> String {
     let filled = (level * 20.0).round() as usize;
 
-    (0..20).map(|i| if i < filled { '█' } else { '░' }).collect()
+    (0..20)
+        .map(|i| if i < filled { '█' } else { '░' })
+        .collect()
 }
 
 pub fn print_json(value: &Value) -> Result<()> {
